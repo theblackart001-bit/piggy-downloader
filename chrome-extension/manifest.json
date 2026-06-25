@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Piggy Downloader",
+  "version": "1.0.0",
+  "description": "어느 영상 페이지에서나 플로팅 버튼으로 Piggy Downloader 에 바로 다운로드 추가",
+  "icons": { "128": "icon128.png" },
+  "action": {
+    "default_title": "Piggy Downloader",
+    "default_popup": "popup.html",
+    "default_icon": { "128": "icon128.png" }
+  },
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["http://127.0.0.1:53472/*"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

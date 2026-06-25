@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<style>
+  @page { margin: 22mm 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Malgun Gothic','Apple SD Gothic Neo',sans-serif; color:#15324a; line-height:1.7; font-size:11pt; }
+  .cover { text-align:center; padding:60px 0 30px; }
+  .cover .logo { width:120px;height:120px;border-radius:50%; }
+  h1 { font-size:26pt; color:#0b7fd6; margin:14px 0 4px; }
+  .sub { color:#5b7793; font-size:12pt; }
+  h2 { color:#0b7fd6; border-left:6px solid #f5c542; padding-left:10px; margin-top:28px; font-size:15pt; }
+  h3 { color:#0a5fa3; margin-top:16px; font-size:12.5pt; }
+  ol,ul { margin:6px 0 6px 4px; padding-left:22px; }
+  li { margin:4px 0; }
+  .tip { background:#eef6fd; border:1px solid #d7e6f3; border-radius:10px; padding:12px 16px; margin:12px 0; }
+  .warn { background:#fff6e6; border:1px solid #f5d98a; border-radius:10px; padding:12px 16px; margin:12px 0; }
+  code { background:#f0f4f8; padding:1px 6px; border-radius:5px; font-family:Consolas,monospace; }
+  table { width:100%; border-collapse:collapse; margin:10px 0; }
+  th,td { border:1px solid #d7e6f3; padding:8px 10px; text-align:left; font-size:10.5pt; }
+  th { background:#1f9bf0; color:#fff; }
+  .footer { margin-top:30px; padding-top:12px; border-top:1px solid #d7e6f3; color:#93aabf; font-size:9pt; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <img class="logo" src="logo.png" />
+    <h1>Piggy Downloader</h1>
+    <div class="sub">사용 매뉴얼 · v1.0.0</div>
+  </div>
+
+  <h2>1. 프로그램 소개</h2>
+  <p>Piggy Downloader는 YouTube · TikTok · Instagram 등 <b>1000개 이상의 사이트</b>에서
+  영상과 오디오를 받아주는 데스크톱 다운로더입니다. 강력한 yt-dlp 엔진과 ffmpeg, 그리고
+  AI 음성인식(Whisper)을 내장하여 별도 설치 없이 바로 사용할 수 있습니다.</p>
+  <table>
+    <tr><th>기능</th><th>설명</th></tr>
+    <tr><td>영상 다운로드</td><td>무조건 최고화질로 받고 영상+오디오를 자동 병합(MP4)</td></tr>
+    <tr><td>오디오 추출</td><td>MP3로 변환, 썸네일·메타데이터 포함</td></tr>
+    <tr><td>AI 자막</td><td>다운로드 후 음성을 분석해 자막(.srt) 자동 생성 (무료·오프라인)</td></tr>
+    <tr><td>클립보드 감지</td><td>주소를 복사하면 앱이 자동으로 인식</td></tr>
+    <tr><td>브라우저 버튼</td><td>크롬 확장으로 어느 페이지에서나 플로팅 버튼 다운로드</td></tr>
+  </table>
+
+  <h2>2. 설치</h2>
+  <h3>Windows</h3>
+  <ol>
+    <li><b>Windows</b> 폴더의 <code>Piggy Downloader Setup 1.0.0.exe</code>(설치형, 권장) 실행</li>
+    <li>"Windows의 PC 보호" 안내가 뜨면 [추가 정보] → [실행]</li>
+    <li>휴대용이 필요하면 <code>PiggyDownloader-Portable-1.0.0.exe</code>(무설치) 사용</li>
+  </ol>
+  <h3>macOS</h3>
+  <ol>
+    <li><b>macOS</b> 폴더의 <code>.dmg</code>를 열어 응용프로그램으로 드래그</li>
+    <li>첫 실행 차단 시 [개인정보 보호 및 보안] → [확인 없이 열기]</li>
+  </ol>
+
+  <h2>3. 기본 사용법</h2>
+  <ol>
+    <li>영상 페이지의 주소(URL)를 복사합니다 → 앱이 자동으로 감지해 채워줍니다.</li>
+    <li>(수동) 주소창에 붙여넣고 <b>[불러오기]</b>를 누릅니다.</li>
+    <li>미리보기를 확인하고 <b>[＋ 대기열 추가]</b>를 누르면 다운로드가 시작됩니다.</li>
+    <li>완료된 파일은 <b>무조건 [다운로드] 폴더</b>에 저장됩니다. (상단 폴더 버튼으로 열기)</li>
+  </ol>
+  <div class="tip"><b>모드 전환</b> — 상단의 <b>🎬 영상 / 🎵 오디오(MP3)</b> 버튼으로 선택합니다.
+  영상은 항상 최고화질로 받습니다.</div>
+
+  <h2>4. AI 자막 만들기</h2>
+  <p>영상 모드에서 <b>🤖 AI 자막</b>을 체크하면, 다운로드가 끝난 뒤 음성을 분석해
+  같은 폴더에 <code>.srt</code> 자막 파일을 생성합니다. 한국어/영어 등 자동 인식하며 인터넷 없이 동작합니다.</p>
+  <div class="tip">처음 한 번은 음성인식 모델을 준비하느라 시간이 더 걸릴 수 있습니다.
+  더 정확한 자막이 필요하면 더 큰 모델로 교체할 수 있습니다(고급).</div>
+
+  <h2>5. 크롬 확장 — 브라우저 플로팅 버튼</h2>
+  <ol>
+    <li><code>chrome-extension.zip</code> 압축 해제</li>
+    <li>크롬에서 <code>chrome://extensions</code> 접속 → 우측 상단 <b>[개발자 모드]</b> 켜기</li>
+    <li><b>[압축해제된 확장 프로그램을 로드]</b> → 압축 푼 폴더 선택</li>
+    <li>Piggy Downloader 앱 실행 → 영상 페이지 우측 하단 🐷 버튼 클릭으로 즉시 다운로드</li>
+  </ol>
+  <div class="tip">좌클릭 = 영상 / 우클릭 = 메뉴(영상·MP3) / 버튼을 위아래로 드래그하면 위치 이동.
+  앱과는 내 컴퓨터 안(127.0.0.1)에서만 통신하며 외부로 데이터를 보내지 않습니다.</div>
+
+  <h2>6. 자동 업데이트</h2>
+  <p>설치형은 새 버전이 나오면 앱 실행 중 자동으로 확인·다운로드하고, 다음 실행 때 적용됩니다.
+  하단 상태바에 "새 버전 준비됨"이 보이면 클릭해 즉시 재시작·적용할 수 있습니다.</p>
+
+  <h2>7. 자주 묻는 질문</h2>
+  <h3>다운로드가 안 돼요.</h3>
+  <p>인터넷 연결을 확인하고, 비공개/연령제한/삭제된 영상이 아닌지 확인하세요. 일시적 차단은 잠시 후 재시도하면 해결되는 경우가 많습니다.</p>
+  <h3>화질을 고를 수 없나요?</h3>
+  <p>항상 최고화질로 받도록 설계되어 별도 선택이 없습니다.</p>
+  <h3>저장 위치를 바꾸고 싶어요.</h3>
+  <p>이 버전은 [다운로드] 폴더 고정입니다. 상단 폴더 버튼으로 해당 폴더를 바로 열 수 있습니다.</p>
+
+  <div class="warn"><b>안내</b> — 본 프로그램은 개인적·합법적 용도로만 사용하세요.
+  저작권이 있는 콘텐츠의 무단 복제·배포에 대한 책임은 사용자에게 있습니다. 자세한 내용은 「이용약관」을 참고하세요.</div>
+
+  <div class="footer">© 2026 AI부업플랜 · callos9987@gmail.com</div>
+</body>
+</html>

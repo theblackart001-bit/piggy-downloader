@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { width: 260px; margin: 0; font-family: system-ui, 'Apple SD Gothic Neo', sans-serif;
+           background: linear-gradient(135deg, #1f9bf0, #0b7fd6); color: #fff; }
+    .box { padding: 18px; text-align: center; }
+    img { width: 64px; height: 64px; border-radius: 50%; background: #fff; }
+    h1 { font-size: 17px; margin: 10px 0 2px; }
+    p { font-size: 12px; opacity: .9; margin: 0 0 14px; }
+    .status { font-size: 13px; font-weight: 700; padding: 9px; border-radius: 10px;
+              background: rgba(255,255,255,.18); }
+    .status.ok { background: rgba(22,179,100,.9); }
+    .status.err { background: rgba(239,79,86,.9); }
+    .hint { font-size: 11px; opacity: .85; margin-top: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <img src="icon128.png" alt="Piggy" />
+    <h1>Piggy Downloader</h1>
+    <p>플로팅 버튼으로 바로 다운로드</p>
+    <div class="status" id="status">앱 연결 확인 중...</div>
+    <div class="hint">영상 페이지 우측 하단 🐷 버튼 클릭 → 다운로드<br>우클릭 시 MP3 추출 메뉴</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>Piggy Downloader</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="light">
+  <header class="topbar">
+    <div class="brand">
+      <img src="assets/logo.png" alt="Piggy" class="brand-logo" />
+      <div class="brand-text">
+        <h1>Piggy <span>Downloader</span></h1>
+        <p>1000+ 사이트 · 최고화질 · MP3 추출</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button id="themeBtn" class="icon-btn" title="테마 전환">🌙</button>
+      <button id="folderBtn" class="ghost-btn" title="저장 폴더">
+        <span class="folder-ico">📁</span><span id="folderLabel">다운로드</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="content">
+    <!-- 입력 영역 -->
+    <section class="input-card">
+      <div class="input-row">
+        <input id="urlInput" type="text" autocomplete="off" spellcheck="false"
+               placeholder="영상 URL 을 붙여넣으세요 (YouTube · TikTok · Instagram · 그 외 1000+)" />
+        <button id="pasteBtn" class="mini-btn" title="클립보드 붙여넣기">붙여넣기</button>
+        <button id="fetchBtn" class="primary-btn">불러오기</button>
+      </div>
+
+      <div class="options">
+        <div class="seg" id="modeSeg">
+          <button class="seg-item active" data-mode="video">🎬 영상</button>
+          <button class="seg-item" data-mode="audio">🎵 오디오(MP3)</button>
+        </div>
+
+        <span class="quality-fixed" id="qualityGroup">🏆 최고 화질</span>
+
+        <label class="check" title="다운로드 후 AI 음성분석으로 자막(.srt)을 생성합니다">
+          <input type="checkbox" id="subsCheck" /> 🤖 AI 자막
+        </label>
+      </div>
+    </section>
+
+    <!-- 미리보기 -->
+    <section id="preview" class="preview hidden">
+      <img id="previewThumb" class="preview-thumb" alt="" />
+      <div class="preview-meta">
+        <div id="previewTitle" class="preview-title"></div>
+        <div class="preview-sub">
+          <span id="previewUploader"></span>
+          <span id="previewDuration" class="pill"></span>
+          <span id="previewSite" class="pill site"></span>
+        </div>
+      </div>
+      <button id="addBtn" class="primary-btn add-btn">＋ 대기열 추가</button>
+    </section>
+
+    <div id="fetchStatus" class="fetch-status hidden"></div>
+
+    <!-- 다운로드 큐 -->
+    <section class="queue-section">
+      <div class="queue-head">
+        <h2>다운로드 <span id="queueCount" class="count">0</span></h2>
+        <div class="queue-head-actions">
+          <button id="clearDoneBtn" class="text-btn">완료 항목 비우기</button>
+        </div>
+      </div>
+      <ul id="queue" class="queue"></ul>
+      <div id="emptyState" class="empty-state">
+        <img src="assets/logo.png" alt="" class="empty-logo" />
+        <p>URL 을 불러와 대기열에 추가하세요.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span id="statusText">준비됨</span>
+    <span class="spacer"></span>
+    <span class="muted">Piggy Downloader v1.0.0 · yt-dlp 엔진</span>
+  </footer>
+
+  <!-- 큐 아이템 템플릿 -->
+  <template id="queueItemTpl">
+    <li class="q-item" data-id="">
+      <img class="q-thumb" alt="" />
+      <div class="q-body">
+        <div class="q-title"></div>
+        <div class="q-meta">
+          <span class="q-badge mode"></span>
+          <span class="q-badge quality"></span>
+          <span class="q-stage"></span>
+        </div>
+        <div class="q-progress"><div class="q-bar"></div></div>
+        <div class="q-stats">
+          <span class="q-percent">0%</span>
+          <span class="q-speed"></span>
+          <span class="q-eta"></span>
+        </div>
+      </div>
+      <div class="q-actions">
+        <button class="q-open hidden" title="폴더 열기">📂</button>
+        <button class="q-cancel" title="취소">✕</button>
+        <button class="q-retry hidden" title="다시 시도">↻</button>
+      </div>
+    </li>
+  </template>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

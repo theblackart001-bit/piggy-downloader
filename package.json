@@ -1,0 +1,111 @@
+{
+  "name": "piggy-downloader",
+  "productName": "Piggy Downloader",
+  "version": "1.0.0",
+  "description": "1000+ 사이트 영상·오디오 다운로더 (yt-dlp + ffmpeg 내장)",
+  "author": "AI부업플랜 <callos9987@gmail.com>",
+  "license": "MIT",
+  "main": "src/main/main.js",
+  "scripts": {
+    "prep": "node scripts/download-binaries.js",
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "icon": "node scripts/make-icon.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "publish:win": "electron-builder --win --publish always",
+    "pdfs": "electron scripts/make-pdfs.js",
+    "package": "node scripts/make-dist-package.js",
+    "postinstall": "node scripts/download-binaries.js"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "kr.aiplan.piggydownloader",
+    "productName": "Piggy Downloader",
+    "copyright": "Copyright © 2026 AI부업플랜",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/${os}",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/models",
+        "to": "models",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Piggy Downloader"
+    },
+    "portable": {
+      "artifactName": "PiggyDownloader-Portable-${version}.exe"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.utilities"
+    },
+    "dmg": {
+      "title": "Piggy Downloader ${version}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "theblackart001-bit",
+        "repo": "piggy-downloader",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}
