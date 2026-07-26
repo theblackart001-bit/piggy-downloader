@@ -31,27 +31,17 @@ jobs:
       - name: 의존성 + mac 바이너리 설치
         run: npm install
 
-      # Whisper(AI 자막)는 mac prebuilt 가 없어 brew 로 받아 번들한다.
-      # 실패해도 빌드는 계속한다 — 앱이 PATH 폴백으로 동작하도록 설계돼 있다.
-      - name: Whisper 번들 시도 (선택)
-        continue-on-error: true
+      # ⚠️ Whisper 는 mac 에 번들하지 않는다 (2026-07-27 결정).
+      #    brew 로 설치한 whisper-cli 는 /opt/homebrew/lib/*.dylib 를 '절대경로'로 참조한다.
+      #    그대로 복사해 넣으면 Homebrew 가 없는 사용자 맥에서 실행되지 않는다.
+      #    더 나쁜 건, binaries.js 가 번들본을 **먼저** 찾기 때문에
+      #    brew 로 whisper 를 깔아둔 사용자까지 이 깨진 번들본에 걸려 실패한다는 점이다.
+      #    → 아예 넣지 않고 PATH 폴백에 맡긴다(brew install whisper-cpp 안내는 매뉴얼에).
+      - name: 번들 상태 확인
         run: |
-          brew install whisper-cpp || exit 0
-          BIN="$(command -v whisper-cli || true)"
-          if [ -n "$BIN" ]; then
-            mkdir -p resources/mac/whisper
-            cp "$BIN" resources/mac/whisper/whisper-cli
-            # 동적 라이브러리도 함께 담는다(없으면 실행 시 못 찾는다)
-            for L in $(otool -L "$BIN" | awk 'NR>1 {print $1}' | grep -E '^/(opt|usr/local)' || true); do
-              cp -f "$L" resources/mac/whisper/ 2>/dev/null || true
-            done
-            echo "whisper 번들 완료"
-          else
-            echo "whisper-cli 없음 — PATH 폴백으로 동작"
-          fi
-
-      - name: 모델 확인
-        run: ls -la resources/models || echo "(모델 없음 — 자막은 폴백)"
+          echo "mac: whisper 는 번들하지 않음 (PATH 폴백)"
+          ls -la resources/mac || true
+          ls -la resources/models || echo "(모델 없음)"
 
       # 코드 서명 없음(애플 개발자 계정 미보유) → 서명 시도를 끈다.
       #
