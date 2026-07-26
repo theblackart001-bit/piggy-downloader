@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { getPaths, envWithBin, YTDLP_BASE_ARGS } = require('./binaries');
 const resolvers = require('./resolvers');
+const threads = require('./threads');
 
 /**
  * 🔑 로그인이 필요한 콘텐츠용 쿠키 인자.
@@ -90,6 +91,10 @@ class YtDlpEngine {
    * @returns {Promise<object>} yt-dlp -J 결과(JSON)
    */
   async getInfo(url, opts = {}) {
+    // 🧵 Threads 는 yt-dlp 에 추출기 자체가 없다 → 전용 리졸버로 처리.
+    if (threads.shouldHandle(url)) {
+      return threads.getInfoLike(url, { cookiesFile: opts.cookies?.file || null });
+    }
     // 인스타 등 쿠키가 막는 사이트는 외부 리졸버로 메타 조회(로그인 불필요)
     // 단, 사용자가 쿠키를 등록했다면 리졸버보다 쿠키가 더 정확하므로 yt-dlp 로 간다.
     const hasCookies = !!(opts.cookies && opts.cookies.mode && opts.cookies.mode !== 'none');
@@ -121,6 +126,21 @@ class YtDlpEngine {
    * @param {function} onProgress      진행률 콜백
    */
   async download(job, onProgress) {
+    // 🧵 Threads: 숨긴 창으로 글을 열어 실제 mp4/이미지 주소를 잡아낸 뒤 그걸 받는다.
+    if (threads.shouldHandle(job.url)) {
+      const meta = await threads.resolve(job.url, {
+        cookiesFile: job.cookies?.file || null,
+        onProgress,
+      });
+      job = {
+        ...job,
+        url: meta.directUrl,
+        _direct: true,
+        _threadsCode: meta.code,
+        _threadsTitle: meta.title,
+      };
+      return this._spawnDownload(job, onProgress);
+    }
     // 인스타 등: 로그인 없이 직접 미디어 URL로 해석 후 그 URL을 다운로드.
     //  ⚠️ 쿠키를 등록했다면 리졸버를 쓰지 않는다 — 쿠키가 있으면 yt-dlp 가
     //    비공개·로그인 전용 게시물까지 정식으로 처리하므로 그쪽이 정확하다.
@@ -258,15 +278,26 @@ class YtDlpEngine {
     // 리졸버로 이미 직접 미디어 URL을 받은 경우(_direct): 단일 프로그레시브 파일이라
     // 포맷 병합·자막·재생목록 로직을 건너뛰고, 파일명은 shortcode 기준으로 고정한다.
     const direct = !!job._direct;
-    const nameBase = direct && job._igShortcode
-      ? `Instagram [${job._igShortcode}]`
-      : '%(title).200B [%(id)s]';
+    // ★ 파일명 = 영상 제목 그대로 (사장님 지시 2026-07-27).
+    //   예전엔 '%(title).200B [%(id)s]' + --restrict-filenames 였다. 그러면
+    //     · 공백이 전부 '_' 로 바뀌고
+    //     · 한글이 통째로 지워지고 (--restrict-filenames 는 ASCII 만 남긴다)
+    //     · 뒤에 [dQw4w9WgXcQ] 같은 영상 ID 가 붙었다
+    //   → 제목만 쓰고, 길이는 150바이트로 잘라 윈도우 경로 길이 제한을 피한다.
+    //     (파일명에 못 쓰는 문자 \ / : * ? " < > | 는 yt-dlp 가 알아서 바꿔준다)
+    // 스레드/인스타는 직접 미디어 URL 이라 yt-dlp 가 제목을 모른다 → 우리가 잡은 제목을 쓴다.
+    const safe = (s) => String(s || '').replace(/[\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const nameBase = direct && job._threadsCode
+      ? (safe(job._threadsTitle) || `Threads ${job._threadsCode}`)
+      : direct && job._igShortcode
+        ? `Instagram ${job._igShortcode}`
+        : '%(title).150B';
     const outTemplate = path.join(job.outputDir, `${nameBase}.%(ext)s`);
     const args = [
       '--newline',
       '--no-warnings',
       '--ffmpeg-location', ffmpegDir,
-      '--restrict-filenames',
+      '--windows-filenames',   // 윈도우에서 못 쓰는 문자만 안전하게 치환(한글·공백은 유지)
       '--no-mtime',
       '-o', outTemplate,
       // 진행률을 파싱하기 쉬운 토큰으로 출력
