@@ -84,6 +84,88 @@ async function pickLargest(urls, say) {
   return top.u;
 }
 
+/**
+ * text 안의 pos 위치를 감싸는 가장 안쪽 JSON 객체({...})를 찾아 파싱한다.
+ * 문자열 안의 중괄호에 속지 않도록 따옴표·이스케이프를 함께 추적한다.
+ */
+function enclosingObject(text, pos) {
+  const stack = [];
+  let inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') stack.push(i);
+    else if (c === '}') {
+      const start = stack.pop();
+      // pos 를 품는 객체가 닫히는 순간이 곧 '가장 안쪽 객체'다.
+      if (start !== undefined && start <= pos && i >= pos) {
+        try { return JSON.parse(text.slice(start, i + 1)); } catch (_) { /* 더 바깥 객체로 계속 */ }
+      }
+    }
+  }
+  return null;
+}
+
+/** 후보 중 가장 큰 것(픽셀 수 기준). 크기 정보가 없으면 첫 번째. */
+function largest(cands) {
+  if (!Array.isArray(cands) || !cands.length) return null;
+  const withSize = cands.filter((c) => c && c.width && c.height);
+  if (!withSize.length) return cands[0];
+  return withSize.slice().sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];
+}
+
+/**
+ * ★ 페이지에 박혀 있는 **글 데이터(JSON)** 에서 이 글의 미디어만 순서대로 뽑는다.
+ *
+ * 왜 이게 낫나 — 예전엔 화면에 뜬 <img> 와 네트워크로 흘러간 주소를 긁어모았는데,
+ *   · 캐러셀 1번이 **영상**이면 그 자리의 <img> 는 '영상 커버'라, 영상 대신 커버 사진을 받았다.
+ *   · 글 하나를 열어도 아래 피드까지 같이 그려져서(실측 컨테이너 53개, 이미지 93장)
+ *     남의 글 사진과 같은 사진의 다른 크기 판본이 섞여 15장이 받아졌다(실제 미디어는 3개).
+ *   JSON 에는 이 글의 carousel_media 가 순서대로, 영상은 video_versions(진짜 mp4 주소)로 들어 있다.
+ *
+ * @returns {Promise<{media:Array<{kind:'video'|'photo',url:string}>, caption:string}|null>}
+ */
+async function extractFromPageData(win, code) {
+  let raw = '';
+  try {
+    raw = await win.webContents.executeJavaScript(`
+      (() => [...document.querySelectorAll('script')]
+        .map((s) => s.textContent || '')
+        .filter((t) => /carousel_media|video_versions/.test(t))
+        .join('\\n'))()
+    `);
+  } catch (_) { return null; }
+  if (!raw) return null;
+
+  const idx = raw.indexOf(`"code":"${code}"`);
+  if (idx < 0) return null;
+  const post = enclosingObject(raw, idx);
+  if (!post) return null;
+
+  // 캐러셀이면 항목들, 아니면 글 자체가 미디어 하나다.
+  const items = Array.isArray(post.carousel_media) && post.carousel_media.length
+    ? post.carousel_media
+    : [post];
+
+  const media = [];
+  for (const m of items) {
+    const v = largest(m && m.video_versions);
+    if (v && v.url) { media.push({ kind: 'video', url: v.url }); continue; }
+    const img = largest(m && m.image_versions2 && m.image_versions2.candidates);
+    if (img && img.url) media.push({ kind: 'photo', url: img.url });
+  }
+  if (!media.length) return null;
+
+  const caption = String((post.caption && post.caption.text) || '').replace(/\s+/g, ' ').trim();
+  return { media, caption };
+}
+
 /** 쿠키 파일(netscape 형식)을 세션에 주입 — 비공개 글용. 실패해도 계속 진행. */
 async function applyCookies(ses, cookiesFile) {
   if (!cookiesFile || !fs.existsSync(cookiesFile)) return 0;
@@ -137,6 +219,7 @@ async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress 
   const videoUrls = new Set();
   const photoUrls = new Set();
   let title = '';
+  let pageData = null; // 글 JSON 에서 뽑은 결과(1순위 경로)
 
   // 페이지가 가져가는 모든 요청을 훑어 미디어 주소만 줍는다.
   ses.webRequest.onCompleted({ urls: ['<all_urls>'] }, (details) => {
@@ -169,8 +252,35 @@ async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress 
       `);
     } catch (_) { /* 제목 없어도 진행 */ }
 
-    // 영상은 재생을 건드려야 실제 mp4 를 받아오는 경우가 많다.
+    // ★ 1순위: 페이지에 박힌 글 데이터(JSON)에서 바로 뽑는다.
+    //   화면을 긁는 것보다 정확하다 — 영상은 영상으로, 이 글 것만, 순서 그대로 나온다.
+    //   렌더 직후엔 아직 안 박혀 있을 수 있어 잠깐 기다리며 몇 번 시도한다.
     say('🧵 미디어 찾는 중...');
+    for (let i = 0; i < 8; i++) {
+      pageData = await extractFromPageData(win, code);
+      if (pageData) break;
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    if (pageData) {
+      const nv = pageData.media.filter((m) => m.kind === 'video').length;
+      const np = pageData.media.length - nv;
+      say(`🧵 확인: 영상 ${nv}개 · 사진 ${np}개`);
+      return {
+        directUrl: pageData.media[0].url,
+        bestVideo: (pageData.media.find((m) => m.kind === 'video') || {}).url || null,
+        kind: nv ? 'video' : 'photo',
+        // 파일명은 본문 앞부분이 제일 알아보기 쉽다. 본문이 없으면 og:title 로 떨어진다.
+        title: (pageData.caption || String(title || '')).replace(/\s+/g, ' ').trim().slice(0, 120),
+        code,
+        mediaList: pageData.media,
+        videoUrls: pageData.media.filter((m) => m.kind === 'video').map((m) => m.url),
+        photoUrls: pageData.media.filter((m) => m.kind === 'photo').map((m) => m.url),
+      };
+    }
+    say('🧵 (글 데이터를 못 읽어 화면에서 찾습니다)');
+
+    // ── 이하 예비 경로: JSON 을 못 읽었을 때만 화면·네트워크를 긁는다 ──
+    // 영상은 재생을 건드려야 실제 mp4 를 받아오는 경우가 많다.
     try {
       await win.webContents.executeJavaScript(`
         (() => {
@@ -310,10 +420,17 @@ async function downloadAll(meta, outputDir, { onProgress = null, baseName = '' }
   const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
   const base = safe(baseName || meta.title) || `Threads ${meta.code}`;
 
-  const targets = [
-    ...(meta.bestVideo ? [{ url: meta.bestVideo, ext: 'mp4' }] : []),
-    ...meta.photoUrls.map((u) => ({ url: u, ext: (u.match(/\.(jpe?g|png|webp)/i) || [, 'jpg'])[1].toLowerCase() })),
-  ];
+  // 글 JSON 을 읽었으면 **글에 실린 순서 그대로**(1번이 영상이면 01.mp4) 받는다.
+  const extOf = (u, fallback) => (u.split('?')[0].match(/\.(mp4|jpe?g|png|webp)$/i) || [, fallback])[1].toLowerCase();
+  const targets = Array.isArray(meta.mediaList) && meta.mediaList.length
+    ? meta.mediaList.map((m) => ({
+      url: m.url,
+      ext: m.kind === 'video' ? 'mp4' : extOf(m.url, 'jpg'),
+    }))
+    : [
+      ...(meta.bestVideo ? [{ url: meta.bestVideo, ext: 'mp4' }] : []),
+      ...meta.photoUrls.map((u) => ({ url: u, ext: extOf(u, 'jpg') })),
+    ];
   if (!targets.length) throw new Error('받을 미디어가 없습니다');
 
   // 여러 개일 때만 폴더를 만든다. 1개인데 폴더를 만들면 열어보는 손이 한 번 더 간다.
