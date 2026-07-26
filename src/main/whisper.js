@@ -105,4 +105,66 @@ function transcribe(mediaFile, onProgress) {
   });
 }
 
-module.exports = { transcribe };
+/**
+ * 자막 미리보기용: 미디어(오디오/영상) → Whisper 로 **평문 텍스트**만 추출(파일 저장 없음).
+ * 결과는 메모리(문자열)로만 반환하고 작업 폴더는 즉시 정리한다.
+ * @param {string} mediaFile  전사할 미디어 파일(오디오 권장)
+ * @param {{lang?: string}} [opts]  lang: 'auto'|'ko'|'en'|'ja'|'zh' ...
+ */
+function transcribeText(mediaFile, opts = {}, onProgress) {
+  const lang = opts.lang && opts.lang !== 'auto' ? opts.lang : 'auto';
+  return new Promise((resolve, reject) => {
+    const { ffmpeg } = getPaths();
+    const { whisper, model } = getWhisperPaths();
+
+    if (!model) return reject(new Error('Whisper 모델이 없습니다. `npm run prep` 으로 받으세요.'));
+    if (!fs.existsSync(mediaFile)) return reject(new Error('오디오 파일을 찾을 수 없습니다.'));
+
+    const workRoot = asciiWorkRoot();
+    const jobDir = path.join(workRoot, `pv-${Date.now()}-${++seq}`);
+    fs.mkdirSync(jobDir, { recursive: true });
+
+    const asciiModel = ensureAsciiModel(model, workRoot);
+    const wav = path.join(jobDir, 'audio.wav'); // ASCII
+    const ofBase = path.join(jobDir, 'out'); // ASCII -> out.txt
+    const txtTmp = `${ofBase}.txt`;
+    const cleanup = () => { try { fs.rmSync(jobDir, { recursive: true, force: true }); } catch (_) {} };
+
+    if (onProgress) onProgress({ type: 'stage', text: '🎙️ 오디오 변환 중...' });
+
+    // 1) ffmpeg: (한글 가능)원본 → (ASCII)wav 16kHz mono
+    const ff = spawn(ffmpeg, ['-y', '-i', mediaFile, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', wav], { windowsHide: true });
+    let ffErr = '';
+    ff.stderr.on('data', (d) => (ffErr += d.toString()));
+    ff.on('error', (e) => { cleanup(); reject(e); });
+    ff.on('close', (code) => {
+      if (code !== 0 || !fs.existsSync(wav)) { cleanup(); return reject(new Error('오디오 변환 실패: ' + (ffErr.split('\n').filter(Boolean).pop() || code))); }
+
+      // 2) whisper-cli: ASCII model/wav/output, 평문(-otxt)
+      if (onProgress) onProgress({ type: 'stage', text: '🤖 AI 전사 중...' });
+      const args = ['-m', asciiModel, '-f', wav, '-l', lang, '-otxt', '-of', ofBase, '-pp'];
+      const wp = spawn(whisper, args, { windowsHide: true });
+      let wErr = '';
+      wp.stderr.on('data', (d) => {
+        const t = d.toString();
+        wErr += t;
+        const m = t.match(/progress\s*=\s*(\d+)%/i);
+        if (m && onProgress) onProgress({ type: 'progress', percent: Number(m[1]) });
+      });
+      wp.on('error', (e) => { cleanup(); reject(e); });
+      wp.on('close', (code2) => {
+        if (code2 === 0 && fs.existsSync(txtTmp)) {
+          let text = '';
+          try { text = fs.readFileSync(txtTmp, 'utf-8'); } catch (_) {}
+          cleanup();
+          resolve({ ok: true, text: text.trim() });
+        } else {
+          cleanup();
+          reject(new Error('전사 실패: ' + (wErr.split('\n').filter(Boolean).pop() || `code ${code2}`)));
+        }
+      });
+    });
+  });
+}
+
+module.exports = { transcribe, transcribeText };

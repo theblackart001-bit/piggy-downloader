@@ -21,4 +21,11 @@ contextBridge.exposeInMainWorld('piggy', {
   onExternalAdd: (cb) => ipcRenderer.on('external:add', (_e, data) => cb(data)),
   onUpdateStatus: (cb) => ipcRenderer.on('update:status', (_e, data) => cb(data)),
   installUpdate: () => ipcRenderer.invoke('update:install'),
+  getAppVersion: () => ipcRenderer.invoke('app:version'),
+
+  // yt-dlp 갱신 — 유튜브 구조가 바뀌면 이게 최신이어야 다운로드가 계속 된다.
+  onYtdlpStatus: (cb) => ipcRenderer.on('ytdlp:status', (_e, data) => cb(data)),
+  updateYtdlp: () => ipcRenderer.invoke('ytdlp:update'),
+  getYtdlpVersion: () => ipcRenderer.invoke('ytdlp:version'),
+  openTranscribe: (url) => ipcRenderer.invoke('preview:open', url),
 });

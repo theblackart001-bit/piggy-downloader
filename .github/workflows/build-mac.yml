@@ -1,0 +1,71 @@
+name: Build macOS
+
+# macOS 설치본(.dmg)은 macOS 에서만 만들 수 있다(dmg 생성에 hdiutil 필요).
+# 개발 PC 가 Windows 라 여기(GitHub 의 실제 맥 머신)에서 빌드해 릴리즈에 붙인다.
+# 공개 저장소라 macOS 러너가 무료다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '결과를 붙일 릴리즈 태그 (예: v1.3.0)'
+        required: true
+        default: 'v1.3.0'
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # postinstall 이 현재 플랫폼(mac) 바이너리를 자동으로 받는다.
+      # (yt-dlp_macos · ffmpeg 정적빌드 · deno)
+      - name: 의존성 + mac 바이너리 설치
+        run: npm install
+
+      # Whisper(AI 자막)는 mac prebuilt 가 없어 brew 로 받아 번들한다.
+      # 실패해도 빌드는 계속한다 — 앱이 PATH 폴백으로 동작하도록 설계돼 있다.
+      - name: Whisper 번들 시도 (선택)
+        continue-on-error: true
+        run: |
+          brew install whisper-cpp || exit 0
+          BIN="$(command -v whisper-cli || true)"
+          if [ -n "$BIN" ]; then
+            mkdir -p resources/mac/whisper
+            cp "$BIN" resources/mac/whisper/whisper-cli
+            # 동적 라이브러리도 함께 담는다(없으면 실행 시 못 찾는다)
+            for L in $(otool -L "$BIN" | awk 'NR>1 {print $1}' | grep -E '^/(opt|usr/local)' || true); do
+              cp -f "$L" resources/mac/whisper/ 2>/dev/null || true
+            done
+            echo "whisper 번들 완료"
+          else
+            echo "whisper-cli 없음 — PATH 폴백으로 동작"
+          fi
+
+      - name: 모델 확인
+        run: ls -la resources/models || echo "(모델 없음 — 자막은 폴백)"
+
+      # 코드 서명 없음(애플 개발자 계정 미보유) → 서명 시도를 끈다.
+      - name: dmg 빌드 (arm64 + x64)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac --publish never
+
+      - name: 산출물 확인
+        run: ls -la dist/*.dmg
+
+      - name: 릴리즈에 첨부
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.tag }}" dist/*.dmg --clobber --repo "${{ github.repository }}"
+
+      - name: 빌드 결과 보관(다운로드용)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-dmg
+          path: dist/*.dmg

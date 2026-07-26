@@ -1,7 +1,7 @@
 {
   "name": "piggy-downloader",
   "productName": "Piggy Downloader",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "1000+ 사이트 영상·오디오 다운로더 (yt-dlp + ffmpeg 내장)",
   "author": "AI부업플랜 <callos9987@gmail.com>",
   "license": "MIT",
@@ -59,12 +59,6 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
         }
       ],
       "icon": "build/icon.png"
@@ -76,9 +70,6 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Piggy Downloader"
-    },
-    "portable": {
-      "artifactName": "PiggyDownloader-Portable-${version}.exe"
     },
     "mac": {
       "target": [
@@ -106,6 +97,7 @@
     ]
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "snapsave-media-downloader": "^2.4.0"
   }
 }

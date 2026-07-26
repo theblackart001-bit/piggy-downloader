@@ -4,9 +4,9 @@ const path = require('path');
 const fs = require('fs');
 
 const PKG = path.join(__dirname, '..', 'packaging');
+// 이용약관은 배포에서 뺐으므로(2026-07-26) 매뉴얼만 만든다.
 const jobs = [
   { html: 'manual.html', pdf: '사용매뉴얼.pdf' },
-  { html: 'terms.html', pdf: '이용약관.pdf' },
 ];
 
 async function render(win, html, pdf) {

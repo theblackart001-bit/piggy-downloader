@@ -31,6 +31,7 @@
         <input id="urlInput" type="text" autocomplete="off" spellcheck="false"
                placeholder="영상 URL 을 붙여넣으세요 (YouTube · TikTok · Instagram · 그 외 1000+)" />
         <button id="pasteBtn" class="mini-btn" title="클립보드 붙여넣기">붙여넣기</button>
+        <button id="transcribeBtn" class="mini-btn" title="영상은 받지 않고 음성만 분석해 자막 텍스트를 보여줍니다">👀 자막만 보기</button>
         <button id="fetchBtn" class="primary-btn">불러오기</button>
       </div>
 
@@ -44,6 +45,10 @@
 
         <label class="check" title="다운로드 후 AI 음성분석으로 자막(.srt)을 생성합니다">
           <input type="checkbox" id="subsCheck" /> 🤖 AI 자막
+        </label>
+
+        <label class="check" title="영상 주소를 복사하면 불러오기·추가 없이 곧바로 다운로드가 시작됩니다">
+          <input type="checkbox" id="autoDlCheck" checked /> ⚡ 복사하면 바로 받기
         </label>
       </div>
     </section>
@@ -59,7 +64,7 @@
           <span id="previewSite" class="pill site"></span>
         </div>
       </div>
-      <button id="addBtn" class="primary-btn add-btn">＋ 대기열 추가</button>
+      <button id="addBtn" class="primary-btn add-btn">⬇ 다운로드</button>
     </section>
 
     <div id="fetchStatus" class="fetch-status hidden"></div>
@@ -75,7 +80,7 @@
       <ul id="queue" class="queue"></ul>
       <div id="emptyState" class="empty-state">
         <img src="assets/logo.png" alt="" class="empty-logo" />
-        <p>URL 을 불러와 대기열에 추가하세요.</p>
+        <p>URL 을 불러와 다운로드하세요.</p>
       </div>
     </section>
   </main>
@@ -83,7 +88,8 @@
   <footer class="statusbar">
     <span id="statusText">준비됨</span>
     <span class="spacer"></span>
-    <span class="muted">Piggy Downloader v1.0.0 · yt-dlp 엔진</span>
+    <span class="muted" id="ytdlpInfo" title="유튜브 등이 구조를 바꾸면 이 엔진이 최신이어야 계속 받아집니다. 눌러서 지금 확인.">yt-dlp 확인 중…</span>
+    <span class="muted" id="appVersion"></span>
   </footer>
 
   <!-- 큐 아이템 템플릿 -->

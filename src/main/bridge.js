@@ -33,7 +33,7 @@ function startClipboardWatch(getWindow, intervalMs = 900) {
   return () => clearInterval(timer);
 }
 
-function startServer(getWindow) {
+function startServer(getWindow, handlers = {}) {
   const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -55,6 +55,18 @@ function startServer(getWindow) {
         win.webContents.send('external:add', { url: target, mode });
         if (!win.isVisible()) win.show();
         win.focus();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ ok: true }));
+      }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: 'invalid url' }));
+    }
+
+    // 자막 미리보기: 영상 본체 없이 오디오만 전사 → 미리보기 창
+    if (url.pathname === '/transcribe') {
+      const target = (url.searchParams.get('url') || '').trim();
+      if (target && /^https?:\/\//.test(target) && typeof handlers.onTranscribe === 'function') {
+        handlers.onTranscribe(target);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ ok: true }));
       }

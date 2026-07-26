@@ -7,6 +7,7 @@ const state = {
   pendingInfo: null, // 불러온 미리보기 정보
   items: new Map(), // id -> { el, info, status }
   seq: 0,
+  lastAutoUrl: '', // 복사 감지로 이미 받은 링크(같은 걸 반복해서 받지 않게)
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -14,10 +15,12 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   url: $('#urlInput'),
   paste: $('#pasteBtn'),
+  transcribe: $('#transcribeBtn'),
   fetch: $('#fetchBtn'),
   modeSeg: $('#modeSeg'),
   qualityGroup: $('#qualityGroup'),
   subs: $('#subsCheck'),
+  autoDl: $('#autoDlCheck'),
   preview: $('#preview'),
   previewThumb: $('#previewThumb'),
   previewTitle: $('#previewTitle'),
@@ -34,8 +37,49 @@ const els = {
   folder: $('#folderBtn'),
   folderLabel: $('#folderLabel'),
   status: $('#statusText'),
+  ytdlpInfo: $('#ytdlpInfo'),
+  appVersion: $('#appVersion'),
   tpl: $('#queueItemTpl'),
 };
+
+/* ============ yt-dlp 엔진 상태 ============ */
+// 유튜브가 구조를 바꾸면 yt-dlp 가 최신이어야 계속 받아진다.
+// 앱이 하루 1회 자동 확인하고, 여기를 누르면 즉시 확인한다.
+function subscribeYtdlp() {
+  const el = els.ytdlpInfo;
+  if (!el) return;
+
+  const show = (text, title) => {
+    el.textContent = text;
+    if (title) el.title = title;
+  };
+
+  window.piggy.getYtdlpVersion().then((v) => {
+    if (v) show(`yt-dlp ${v}`, '눌러서 지금 최신인지 확인합니다');
+    else show('yt-dlp', '눌러서 지금 최신인지 확인합니다');
+  });
+  // 푸터 버전 — 예전엔 v1.0.0 이 하드코딩돼 있어 올려도 그대로였다.
+  if (els.appVersion) {
+    window.piggy.getAppVersion().then((v) => { els.appVersion.textContent = `Piggy Downloader v${v}`; });
+  }
+
+  window.piggy.onYtdlpStatus((s) => {
+    if (!s) return;
+    if (s.state === 'checking') show('yt-dlp 확인 중…');
+    else if (s.state === 'downloading') show(`yt-dlp ${s.version} 받는 중…`);
+    else if (s.state === 'updated') { show(`yt-dlp ${s.to} ✅`, `${s.from} → ${s.to} 로 갱신했습니다`); setStatus(`🔄 다운로드 엔진을 최신(${s.to})으로 갱신했습니다`); }
+    else if (s.state === 'latest') show(`yt-dlp ${s.version} ✅`, '최신입니다');
+    else if (s.state === 'error') show('yt-dlp ⚠', `갱신 실패: ${s.error} (기존 버전으로 계속 동작합니다)`);
+  });
+
+  el.style.cursor = 'pointer';
+  el.addEventListener('click', async () => {
+    show('yt-dlp 확인 중…');
+    const r = await window.piggy.updateYtdlp();
+    if (r && r.state === 'latest') setStatus('✅ 다운로드 엔진이 이미 최신입니다');
+    else if (r && r.state === 'error') setStatus(`⚠ 엔진 갱신 실패 — 기존 버전으로 계속 씁니다`);
+  });
+}
 
 /* ============ 초기화 ============ */
 async function init() {
@@ -43,24 +87,36 @@ async function init() {
   state.downloadsDir = await window.piggy.getDownloadsDir(); // 무조건 여기에 저장
   applyTheme(state.settings.theme || 'light');
   state.mode = state.settings.lastMode || 'video';
+  // ⚡ 복사하면 바로 받기 — 기본 켜짐(껐던 사람만 꺼진 상태로 복원)
+  if (els.autoDl) {
+    els.autoDl.checked = state.settings.autoDownloadOnCopy !== false;
+    els.autoDl.addEventListener('change', persistPrefs);
+  }
   setMode(state.mode);
   updateFolderLabel();
   bindEvents();
   subscribeProgress();
   subscribeBridge();
   subscribeUpdates();
+  subscribeYtdlp();
   refreshEmptyState();
   await tryAutoPasteFromClipboard();
 }
 
 /* 클립보드 자동 감지 + 브라우저 플로팅 버튼 연동 */
 function subscribeBridge() {
-  // 브라우저에서 URL 복사 시 자동으로 입력칸에 채우고 미리보기까지
-  window.piggy.onClipboardUrl((url) => {
-    if (!url || url === els.url.value.trim()) return;
+  // 브라우저에서 URL 을 복사하면 → 불러오기 → (자동 다운로드가 켜져 있으면) 곧바로 큐에 넣는다.
+  //   예전엔 여기서 멈춰 사람이 [불러오기] → [대기열 추가]를 눌러야 했다.
+  //   크롬 확장(onExternalAdd)은 원래 원클릭이었는데 복사 경로만 2단계라 어긋나 있었다 → 통일.
+  window.piggy.onClipboardUrl(async (url) => {
+    if (!url || url === state.lastAutoUrl) return;
+    if (url === els.url.value.trim() && state.pendingInfo) return;
+    state.lastAutoUrl = url;                    // 같은 링크로 두 번 받지 않게
     els.url.value = url;
-    setStatus('🔗 복사한 링크 감지 — 불러오는 중');
-    fetchInfo();
+    const auto = state.settings?.autoDownloadOnCopy !== false;
+    setStatus(auto ? '🔗 링크 복사 감지 — 바로 다운로드' : '🔗 복사한 링크 감지 — 불러오는 중');
+    await fetchInfo();
+    if (auto && state.pendingInfo) addCurrentToQueue();
   });
   // 브라우저 플로팅 버튼/확장에서 추가 요청 → 불러온 뒤 곧바로 큐에 추가·다운로드
   window.piggy.onExternalAdd(async ({ url, mode }) => {
@@ -74,10 +130,25 @@ function subscribeBridge() {
 function bindEvents() {
   els.fetch.addEventListener('click', fetchInfo);
   els.url.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchInfo(); });
+  // 📋 붙여넣기 — 사람이 직접 누른 것이므로 의도가 확실하다 → 바로 다운로드까지.
   els.paste.addEventListener('click', async () => {
     const t = await window.piggy.readClipboard();
-    if (t) { els.url.value = t; fetchInfo(); }
+    if (!t) return;
+    els.url.value = t;
+    state.lastAutoUrl = t;
+    await fetchInfo();
+    if (state.settings?.autoDownloadOnCopy !== false && state.pendingInfo) addCurrentToQueue();
   });
+  // 👀 자막만 보기 — 영상은 안 받고 음성만 전사해 텍스트로 보여준다.
+  //   예전엔 크롬 확장에서만 열 수 있던 기능이라 확장을 빼면서 앱으로 옮겼다.
+  if (els.transcribe) {
+    els.transcribe.addEventListener('click', async () => {
+      const url = els.url.value.trim();
+      if (!url) { setStatus('먼저 영상 주소를 넣어주세요'); return; }
+      const r = await window.piggy.openTranscribe(url);
+      setStatus(r && r.ok ? '👀 자막 미리보기 창을 열었습니다' : `⚠ ${(r && r.error) || '열지 못했습니다'}`);
+    });
+  }
   els.add.addEventListener('click', addCurrentToQueue);
   els.clearDone.addEventListener('click', clearDone);
   els.theme.addEventListener('click', toggleTheme);
@@ -87,12 +158,16 @@ function bindEvents() {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
   });
 
-  // 드래그 앤 드롭으로 URL/링크 받기
+  // 드래그 앤 드롭으로 URL/링크 받기 — 끌어다 놓은 것도 의도가 확실하므로 바로 다운로드.
   document.addEventListener('dragover', (e) => e.preventDefault());
-  document.addEventListener('drop', (e) => {
+  document.addEventListener('drop', async (e) => {
     e.preventDefault();
-    const text = e.dataTransfer.getData('text');
-    if (text && /^https?:\/\//.test(text)) { els.url.value = text.trim(); fetchInfo(); }
+    const text = (e.dataTransfer.getData('text') || '').trim();
+    if (!/^https?:\/\//.test(text)) return;
+    els.url.value = text;
+    state.lastAutoUrl = text;
+    await fetchInfo();
+    if (state.settings?.autoDownloadOnCopy !== false && state.pendingInfo) addCurrentToQueue();
   });
 }
 
@@ -123,6 +198,7 @@ function persistPrefs() {
     ...state.settings,
     theme: document.body.dataset.theme,
     lastMode: state.mode,
+    autoDownloadOnCopy: els.autoDl ? els.autoDl.checked : true,
   };
   window.piggy.setSettings(state.settings);
 }
@@ -134,11 +210,15 @@ function updateFolderLabel() {
 }
 
 /* ============ 정보 조회 ============ */
+// 앱을 켤 때 클립보드에 링크가 있으면 채워만 둔다.
+//   ⚠️ 여기서는 자동 다운로드를 하지 않는다 — 어제 복사해 둔 오래된 링크일 수 있어서
+//     앱을 켰다는 이유만으로 받아버리면 곤란하다. '방금 복사'만 자동으로 받는다.
 async function tryAutoPasteFromClipboard() {
   const t = await window.piggy.readClipboard();
   if (t && /^https?:\/\/\S+$/.test(t) && /(youtu|tiktok|instagram|vimeo|facebook|twitter|x\.com|naver|kakao)/i.test(t)) {
     els.url.value = t;
-    setStatus('클립보드에서 링크 감지됨 — 불러오기를 누르세요');
+    state.lastAutoUrl = t; // 이 링크는 '방금 복사'가 아니므로 자동 다운로드 대상에서 제외
+    setStatus('클립보드에 링크가 있습니다 — 📋 또는 [불러오기]를 누르세요');
   }
 }
 

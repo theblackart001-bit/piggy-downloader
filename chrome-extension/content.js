@@ -11,6 +11,7 @@
     <div class="piggy-menu" id="piggyMenu">
       <button class="piggy-menu-item" data-mode="video">🎬 영상 다운로드</button>
       <button class="piggy-menu-item" data-mode="audio">🎵 MP3 추출</button>
+      <button class="piggy-menu-item" data-action="transcribe">📝 자막 미리보기</button>
     </div>
     <button class="piggy-fab" id="piggyFab" title="Piggy Downloader 로 보내기">
       <img src="${chrome.runtime.getURL('icon128.png')}" alt="Piggy" />
@@ -44,6 +45,19 @@
     menu.classList.remove('open');
   }
 
+  // 자막 미리보기: 영상 본체 없이 오디오만 전사 → 앱의 미리보기 창
+  async function transcribe() {
+    const url = location.href;
+    try {
+      const res = await fetch(`${BASE}/transcribe?url=${encodeURIComponent(url)}`);
+      if (res.ok) showToast('자막 미리보기 여는 중 📝');
+      else showToast('실패 — 앱 상태 확인', 'err');
+    } catch (e) {
+      showToast('Piggy Downloader 앱을 먼저 실행하세요', 'err');
+    }
+    menu.classList.remove('open');
+  }
+
   // 메인 버튼: 클릭 시 영상 다운로드 / 길게 또는 우클릭 시 메뉴
   fab.addEventListener('click', (e) => {
     if (menu.classList.contains('open')) { menu.classList.remove('open'); return; }
@@ -54,7 +68,10 @@
     menu.classList.toggle('open');
   });
   menu.querySelectorAll('.piggy-menu-item').forEach((b) =>
-    b.addEventListener('click', () => send(b.dataset.mode)),
+    b.addEventListener('click', () => {
+      if (b.dataset.action === 'transcribe') transcribe();
+      else send(b.dataset.mode);
+    }),
   );
 
   // 드래그로 위치 이동(세로)
