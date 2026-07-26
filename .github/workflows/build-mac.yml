@@ -51,21 +51,41 @@ jobs:
         run: ls -la resources/models || echo "(모델 없음 — 자막은 폴백)"
 
       # 코드 서명 없음(애플 개발자 계정 미보유) → 서명 시도를 끈다.
-      - name: dmg 빌드 (arm64 + x64)
+      #
+      # zip 을 '먼저·따로' 만든다. 이유 두 가지:
+      #  ① mac 자동 업데이트(electron-updater)는 dmg 가 아니라 **zip** 을 요구한다.
+      #  ② dmg 생성은 CI 에서 자주 깨진다(hdiutil detach 실패) → zip 이 함께 죽으면 안 된다.
+      - name: zip 빌드 (arm64 + x64) — 필수
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac zip --publish never
+
+      # dmg 는 '있으면 좋은 것'. 실패해도 zip 으로 배포는 가능하므로 빌드를 멈추지 않는다.
+      # 러너에 남은 볼륨이 detach 를 막는 경우가 있어 미리 정리하고 시도한다.
+      - name: dmg 빌드 (선택, 실패해도 계속)
+        continue-on-error: true
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          for V in /Volumes/Piggy*; do [ -d "$V" ] && hdiutil detach -force "$V" || true; done
+          npx electron-builder --mac dmg --publish never || echo "dmg 실패 — zip 으로 배포"
 
       - name: 산출물 확인
-        run: ls -la dist/*.dmg
+        run: ls -la dist/*.zip dist/*.dmg 2>/dev/null || ls -la dist/
 
       - name: 릴리즈에 첨부
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ inputs.tag }}" dist/*.dmg --clobber --repo "${{ github.repository }}"
+        run: |
+          shopt -s nullglob
+          FILES=(dist/*.dmg dist/*.zip dist/latest-mac.yml)
+          echo "업로드: ${FILES[*]}"
+          gh release upload "${{ inputs.tag }}" "${FILES[@]}" --clobber --repo "${{ github.repository }}"
 
       - name: 빌드 결과 보관(다운로드용)
         uses: actions/upload-artifact@v4
         with:
-          name: mac-dmg
-          path: dist/*.dmg
+          name: mac-build
+          path: |
+            dist/*.dmg
+            dist/*.zip
