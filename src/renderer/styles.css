@@ -330,3 +330,13 @@ body[data-theme='dark'] .seg-item.active { background: var(--blue); color: #fff;
 .pg-list .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pg-list .m { opacity: .6; font-size: 11.5px; white-space: nowrap; }
 .pg-list .gone { opacity: .45; text-decoration: line-through; }
+
+/* 버튼 옆 인라인 안내 — 툴팁은 마우스를 올려야 보여서, 항상 보이게 둔다 */
+.hint-inline {
+  font-size: 12px;
+  opacity: .72;
+  white-space: nowrap;
+  align-self: center;
+  margin-left: 2px;
+}
+.hint-inline b { opacity: 1; font-weight: 600; }

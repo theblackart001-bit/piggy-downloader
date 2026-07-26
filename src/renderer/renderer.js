@@ -115,7 +115,14 @@ function bindExtras() {
       c.mode === 'file' ? '현재: 쿠키 파일 연결됨 ✅'
       : c.mode === 'browser' ? `현재: ${c.browser} 브라우저에서 가져오기 ✅`
       : '현재: 연결 안 됨';
-    if (els.cookieBtn) els.cookieBtn.textContent = c.mode && c.mode !== 'none' ? '🔑 로그인됨' : '🔑 로그인';
+    // 버튼 라벨은 연결 여부만 바꾼다. 옆의 안내문(.hint-inline)은 건드리지 않는다.
+    const connected = c.mode && c.mode !== 'none';
+    if (els.cookieBtn) els.cookieBtn.textContent = connected ? '🔑 연결됨' : '🔑 로그인';
+    // 연결한 뒤에는 '안 받아질 때만' 안내가 더 이상 필요 없다 → 상태 문구로 바꾼다.
+    const hint = document.querySelector('.hint-inline');
+    if (hint) hint.innerHTML = connected
+      ? '← 로그인 연결됨 · 이제 <b>비공개 게시물</b>도 받아집니다'
+      : '← 인스타·샤오홍슈가 <b>안 받아질 때만</b> 눌러주세요';
   };
   els.cookieBtn?.addEventListener('click', () => { showCookieState(); els.cookieModal.classList.remove('hidden'); });
   els.cookieCloseBtn?.addEventListener('click', () => els.cookieModal.classList.add('hidden'));
