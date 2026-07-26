@@ -25,6 +25,80 @@ const { BrowserWindow, session } = require('electron');
 
 const THREADS_RE = /(^|\/\/)(www\.)?threads\.(net|com)\//i;
 
+/**
+ * 스레드 전용 세션 이름.
+ * ⚠️ 'persist:' 를 반드시 붙인다 — 없으면 메모리 세션이라 앱을 끄는 순간 로그인이 날아간다.
+ *    (사용자가 매번 다시 로그인하게 된다)
+ */
+const PARTITION = 'persist:piggy-threads';
+const getSession = () => session.fromPartition(PARTITION);
+
+/** 스레드/인스타는 브라우저를 가려 받는다 — 로그인 창과 조회 창 모두 같은 크롬 UA 로 통일한다. */
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+/** 로그인 상태인가 — 스레드/인스타 세션 쿠키가 있으면 로그인으로 본다. */
+async function isLoggedIn() {
+  try {
+    const ses = getSession();
+    for (const url of ['https://www.threads.com', 'https://www.instagram.com']) {
+      const cookies = await ses.cookies.get({ url });
+      if (cookies.some((c) => c.name === 'sessionid' && c.value)) return true;
+    }
+  } catch (_) { /* 확인 실패는 '로그인 아님'으로 본다 */ }
+  return false;
+}
+
+/**
+ * 앱 안에서 직접 로그인시킨다(경쟁사 SB 다운로더와 같은 방식).
+ *
+ * ■ 왜 브라우저 쿠키를 긁어오지 않나
+ *   크롬 127 부터 쿠키에 App-Bound Encryption 이 걸려서, 크롬을 꺼도 외부 프로그램이
+ *   복호화할 수 없다(실측: 크롬 150, yt-dlp `--cookies-from-browser chrome` 실패).
+ *   그래서 앱 안에서 한 번 로그인받아 이 세션에 담아두는 쪽이 확실하다.
+ *
+ * ■ 개인정보
+ *   비밀번호는 앱을 거치지 않는다. 로그인은 인스타그램 화면에서 직접 이뤄지고,
+ *   결과로 생긴 쿠키만 이 앱 전용 세션에 남는다(다른 사이트와 분리).
+ *
+ * @returns {Promise<{ok:boolean, loggedIn:boolean}>}
+ */
+function openLogin() {
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({
+      width: 520,
+      height: 760,
+      title: '스레드 로그인',
+      autoHideMenuBar: true,
+      webPreferences: { session: getSession(), javascript: true, images: true },
+    });
+    let done = false;
+    const finish = async () => {
+      if (done) return;
+      done = true;
+      const loggedIn = await isLoggedIn();
+      try { if (!win.isDestroyed()) win.destroy(); } catch (_) { /* 이미 닫힘 */ }
+      resolve({ ok: true, loggedIn });
+    };
+
+    // 로그인이 끝나면 굳이 사용자가 창을 닫게 하지 않는다 — 확인되는 즉시 닫아준다.
+    const timer = setInterval(async () => {
+      if (done) return;
+      if (await isLoggedIn()) { clearInterval(timer); finish(); }
+    }, 1500);
+
+    win.on('closed', () => { clearInterval(timer); finish(); });
+    // ⚠️ 일렉트론 기본 UA 로 열면 인스타가 '지원하지 않는 브라우저'로 막을 수 있다 → 크롬 UA 로 연다.
+    win.loadURL('https://www.threads.com/login', { userAgent: UA }).catch(() => {
+      win.loadURL('https://www.instagram.com/accounts/login/', { userAgent: UA }).catch(() => {});
+    });
+  });
+}
+
+/** 로그인을 지운다(계정 바꿀 때). */
+async function logout() {
+  try { await getSession().clearStorageData(); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; }
+}
+
 /** 이 URL 이 Threads 인가 */
 function shouldHandle(url) {
   return THREADS_RE.test(String(url || ''));
@@ -203,9 +277,8 @@ async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress 
   const say = (text) => { if (onProgress) onProgress({ type: 'stage', stage: 'resolving', text }); };
   say('🧵 스레드 글 여는 중...');
 
-  // 앱 전용 세션(사용자 브라우저와 분리).
-  // ⚠️ 호출할 때마다 새 파티션을 만들면 세션이 계속 쌓인다 → 고정 이름 하나만 쓴다.
-  const ses = session.fromPartition('piggy-threads');
+  // 앱 전용 세션(사용자 브라우저와 분리). 앱 안에서 로그인해 둔 쿠키가 여기 남아 있다.
+  const ses = getSession();
   const cookieCount = await applyCookies(ses, cookiesFile);
   if (cookieCount) say(`🧵 로그인 쿠키 ${cookieCount}개 적용`);
 
@@ -233,10 +306,7 @@ async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress 
     //    (리다이렉트·중간 요청 취소 등으로 ERR_FAILED 가 올라온다)
     //    우리가 원하는 건 '네트워크로 흘러간 미디어 주소'이므로,
     //    로드 실패 자체로 포기하지 않고 계속 기다려 본다.
-    await win.loadURL(url, {
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    }).catch((e) => {
+    await win.loadURL(url, { userAgent: UA }).catch((e) => {
       say(`🧵 페이지 로드 경고(${String(e.message || e).slice(0, 40)}) — 계속 진행`);
     });
 
@@ -262,10 +332,23 @@ async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress 
       await new Promise((r) => setTimeout(r, 700));
     }
     if (pageData) {
+      // ★ 로그인 벽 감지 — 로그인 없이 열면 스레드가 본문을 "이 콘텐츠를 이용할 수 없습니다"로 가린다(실측).
+      //   그래도 페이지에 데이터 조각은 남아 있어 '일부만' 받아진다(실측: 5개짜리 글이 3개만).
+      //   조용히 일부만 주면 그게 전부인 줄 알게 된다 → 반드시 알려야 한다.
+      //   ⚠️ 판정은 화면이 다 그려진 **이 시점**에 해야 한다. 로드 직후에 물으면 아직 안 붙어 있다.
+      let restricted = false;
+      try {
+        restricted = await win.webContents.executeJavaScript(
+          "/이 콘텐츠를 이용할 수 없습니다|콘텐츠를 사용할 수 없습니다|This content isn't available/i.test(document.body.innerText || '')",
+        );
+      } catch (_) { /* 판단 실패 시 제한 없음으로 본다 */ }
+
       const nv = pageData.media.filter((m) => m.kind === 'video').length;
       const np = pageData.media.length - nv;
       say(`🧵 확인: 영상 ${nv}개 · 사진 ${np}개`);
+      if (restricted) say('🧵 ⚠️ 로그인이 없어 이 글의 일부만 보입니다 — [🧵 스레드 로그인] 후 다시 받아주세요');
       return {
+        restricted,
         directUrl: pageData.media[0].url,
         bestVideo: (pageData.media.find((m) => m.kind === 'video') || {}).url || null,
         kind: nv ? 'video' : 'photo',
@@ -469,4 +552,4 @@ async function downloadAll(meta, outputDir, { onProgress = null, baseName = '' }
   return { files, first: files[0], dir: multi ? destDir : null };
 }
 
-module.exports = { shouldHandle, resolve, getInfoLike, downloadAll, postCode };
+module.exports = { shouldHandle, resolve, getInfoLike, downloadAll, postCode, isLoggedIn, openLogin, logout };

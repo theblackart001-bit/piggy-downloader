@@ -38,4 +38,7 @@ contextBridge.exposeInMainWorld('piggy', {
   pickCookies: () => ipcRenderer.invoke('cookies:pick'),
   clearCookies: () => ipcRenderer.invoke('cookies:clear'),
   useBrowserCookies: (b) => ipcRenderer.invoke('cookies:useBrowser', b),
+  threadsLogin: () => ipcRenderer.invoke('threads:login'),
+  threadsLoginStatus: () => ipcRenderer.invoke('threads:loginStatus'),
+  threadsLogout: () => ipcRenderer.invoke('threads:logout'),
 });

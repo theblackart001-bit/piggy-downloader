@@ -10,6 +10,7 @@ const whisper = require('./whisper');
 const updater = require('./updater');
 const ytdlpUpdater = require('./ytdlp-updater');
 const history = require('./history');
+const threads = require('./threads');
 
 const IS_DEV = process.argv.includes('--dev');
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
@@ -304,6 +305,12 @@ ipcMain.handle('cookies:useBrowser', (_e, browser) => {
   saveSettings({ ...s, cookies: { mode: 'browser', browser } });
   return { ok: true };
 });
+
+// 🧵 스레드 로그인 — 앱 안에서 한 번만 로그인하면 이후 스레드 글은 전부 받아진다.
+//   (크롬 쿠키를 긁어오는 방법은 크롬 127+ 의 App-Bound Encryption 때문에 불가능하다)
+ipcMain.handle('threads:login', () => threads.openLogin());
+ipcMain.handle('threads:loginStatus', () => threads.isLoggedIn());
+ipcMain.handle('threads:logout', () => threads.logout());
 
 ipcMain.handle('download:cancel', (_e, id) => engine.cancel(id));
 

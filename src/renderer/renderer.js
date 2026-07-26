@@ -124,7 +124,24 @@ function bindExtras() {
       ? '← 로그인 연결됨 · 이제 <b>비공개 게시물</b>도 받아집니다'
       : '← 인스타·샤오홍슈가 <b>안 받아질 때만</b> 눌러주세요';
   };
-  els.cookieBtn?.addEventListener('click', () => { showCookieState(); els.cookieModal.classList.remove('hidden'); });
+  // 🧵 스레드 로그인 — 앱 안에서 직접 로그인시킨다(크롬 쿠키는 최신 크롬에서 못 읽는다).
+  const threadsLoginBtn = $('#threadsLoginBtn');
+  const threadsLoginState = $('#threadsLoginState');
+  const showThreadsState = async () => {
+    if (!threadsLoginState) return;
+    const on = await window.piggy.threadsLoginStatus();
+    threadsLoginState.textContent = on ? '✅ 로그인됨' : '로그인 안 됨';
+  };
+  threadsLoginBtn?.addEventListener('click', async () => {
+    threadsLoginState.textContent = '로그인 창에서 진행해 주세요…';
+    const r = await window.piggy.threadsLogin();
+    await showThreadsState();
+    setStatus(r?.loggedIn
+      ? '🧵 스레드 로그인 완료 — 이제 글의 사진·영상이 전부 받아집니다'
+      : '🧵 로그인이 확인되지 않았습니다. 다시 시도해 주세요');
+  });
+
+  els.cookieBtn?.addEventListener('click', () => { showCookieState(); showThreadsState(); els.cookieModal.classList.remove('hidden'); });
   els.cookieCloseBtn?.addEventListener('click', () => els.cookieModal.classList.add('hidden'));
   els.cookiePickBtn?.addEventListener('click', async () => {
     const r = await window.piggy.pickCookies();
