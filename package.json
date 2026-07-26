@@ -89,7 +89,8 @@
         }
       ],
       "icon": "build/icon.png",
-      "category": "public.app-category.utilities"
+      "category": "public.app-category.utilities",
+      "identity": null
     },
     "dmg": {
       "title": "Piggy Downloader ${version}",
@@ -103,7 +104,8 @@
         "releaseType": "release"
       }
     ],
-    "artifactName": "PiggyDownloader-${version}-${arch}.${ext}"
+    "artifactName": "PiggyDownloader-${version}-${arch}.${ext}",
+    "afterPack": "scripts/afterpack-adhoc-sign.js"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
