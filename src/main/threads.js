@@ -282,12 +282,28 @@ async function getInfoLike(url, opts = {}) {
   };
 }
 
+/** 이미 있으면 뒤에 (2), (3)... 을 붙여 겹치지 않는 폴더를 만든다. */
+function makeUniqueDir(parent, name) {
+  for (let i = 1; i < 100; i++) {
+    const dir = path.join(parent, i === 1 ? name : `${name} (${i})`);
+    if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); return dir; }
+  }
+  const dir = path.join(parent, `${name} (${Date.now()})`);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 /**
  * 스레드 글의 **모든 미디어**(영상 + 사진)를 저장한다.
  * 유튜브처럼 "주소만 복사하면 알아서" 되도록, 한 글에 여러 장이 있어도 전부 받는다.
  *
- * 파일명: <제목> .mp4 / <제목> (1).jpg, (2).jpg ...
- * @returns {Promise<{files:string[], first:string}>}
+ * ■ 저장 형태 (사장님 지시 2026-07-27)
+ *   · 1개짜리 글  → 저장 폴더에 그냥  <제목>.mp4
+ *   · 여러 개인 글 → **<제목>/ 폴더를 만들어 그 안에** 01.mp4, 02.jpg, 03.jpg ...
+ *     사진 10장짜리 글을 받으면 저장 폴더가 통째로 어질러져서 어느 게 한 글인지 알 수 없었다.
+ *     번호는 01 처럼 0 을 채운다 — 그래야 탐색기에서 10 이 2 앞으로 가지 않는다.
+ *
+ * @returns {Promise<{files:string[], first:string, dir:string|null}>}
  */
 async function downloadAll(meta, outputDir, { onProgress = null, baseName = '' } = {}) {
   const say = (text) => { if (onProgress) onProgress({ type: 'stage', stage: 'downloading', text }); };
@@ -300,14 +316,19 @@ async function downloadAll(meta, outputDir, { onProgress = null, baseName = '' }
   ];
   if (!targets.length) throw new Error('받을 미디어가 없습니다');
 
+  // 여러 개일 때만 폴더를 만든다. 1개인데 폴더를 만들면 열어보는 손이 한 번 더 간다.
+  const multi = targets.length > 1;
+  const destDir = multi ? makeUniqueDir(outputDir, base) : outputDir;
+  if (multi) say(`🧵 '${path.basename(destDir)}' 폴더에 ${targets.length}개 저장합니다`);
+
   const files = [];
   let n = 0;
   for (const t of targets) {
     n++;
     say(`🧵 ${n}/${targets.length} 받는 중...`);
-    // 같은 글에 여러 개면 번호를 붙인다(1개뿐이면 번호 없이 깔끔하게).
-    const suffix = targets.length > 1 ? ` (${n})` : '';
-    const dest = path.join(outputDir, `${base}${suffix}.${t.ext}`);
+    // 폴더 안에서는 순서만 알면 되므로 번호만 쓴다(제목이 파일명마다 반복되면 길어서 잘린다).
+    const fileName = multi ? `${String(n).padStart(2, '0')}.${t.ext}` : `${base}.${t.ext}`;
+    const dest = path.join(destDir, fileName);
     try {
       const res = await fetch(t.url, {
         headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://www.threads.com/' },
@@ -323,8 +344,12 @@ async function downloadAll(meta, outputDir, { onProgress = null, baseName = '' }
       say(`🧵 ${n}번째 실패(${String(e.message || e).slice(0, 30)}) — 계속`);
     }
   }
-  if (!files.length) throw new Error('미디어를 받지 못했습니다');
-  return { files, first: files[0] };
+  if (!files.length) {
+    // 전부 실패했는데 빈 폴더만 남으면 사용자는 '받아졌나?' 하고 열어보게 된다 → 치운다.
+    if (multi) { try { fs.rmdirSync(destDir); } catch (_) { /* 비어있지 않으면 그냥 둔다 */ } }
+    throw new Error('미디어를 받지 못했습니다');
+  }
+  return { files, first: files[0], dir: multi ? destDir : null };
 }
 
 module.exports = { shouldHandle, resolve, getInfoLike, downloadAll, postCode };

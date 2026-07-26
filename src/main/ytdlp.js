@@ -141,9 +141,11 @@ class YtDlpEngine {
       const r = await threads.downloadAll(meta, job.outputDir, { onProgress });
       if (onProgress) {
         onProgress({ type: 'progress', percent: 100 });
-        onProgress({ type: 'stage', stage: 'done', text: `🧵 ${r.files.length}개 저장 완료` });
+        // 폴더로 묶였으면 어디에 들어갔는지 알려준다 — 안 그러면 저장 폴더에서 못 찾는다.
+        const where = r.dir ? ` → '${path.basename(r.dir)}' 폴더` : '';
+        onProgress({ type: 'stage', stage: 'done', text: `🧵 ${r.files.length}개 저장 완료${where}` });
       }
-      return { ok: true, file: r.first, files: r.files };
+      return { ok: true, file: r.first, files: r.files, dir: r.dir };
     }
     // 인스타 등: 로그인 없이 직접 미디어 URL로 해석 후 그 URL을 다운로드.
     //  ⚠️ 쿠키를 등록했다면 리졸버를 쓰지 않는다 — 쿠키가 있으면 yt-dlp 가
@@ -343,7 +345,12 @@ class YtDlpEngine {
         '--merge-output-format',
         'mp4',
         '--add-metadata',
-        '--embed-thumbnail',
+        // ⚠️ '--embed-thumbnail' 을 일부러 빼놨다. 되살리지 말 것.
+        //   유튜브 썸네일은 쇼츠라도 **항상 16:9(1280x720)** 인데, 그걸 커버로 박으면
+        //   윈도우 탐색기가 영상 프레임 대신 그 가로 이미지를 썸네일로 쓴다.
+        //   → 1080x1920 세로 영상인데도 목록에서 가로로 보인다(H.264 로 바꾼 뒤에도 그대로였다).
+        //   실측 대조: 커버 없는 인스타 파일은 세로로 정상 표시, 커버가 세로(540x960)인
+        //   틱톡 파일도 정상. 커버가 가로인 유튜브 파일만 가로로 보였다.
       );
       if (job.subtitles) {
         args.push('--write-subs', '--write-auto-subs', '--sub-langs', 'ko,en', '--embed-subs');
