@@ -340,7 +340,7 @@ function updateFolderLabel() {
 //     앱을 켰다는 이유만으로 받아버리면 곤란하다. '방금 복사'만 자동으로 받는다.
 async function tryAutoPasteFromClipboard() {
   const t = await window.piggy.readClipboard();
-  if (t && /^https?:\/\/\S+$/.test(t) && /(youtu|tiktok|instagram|vimeo|facebook|twitter|x\.com|naver|kakao)/i.test(t)) {
+  if (t && /^https?:\/\/\S+$/.test(t) && /(youtu|tiktok|instagram|threads\.|vimeo|facebook|twitter|x\.com|naver|kakao)/i.test(t)) {
     els.url.value = t;
     state.lastAutoUrl = t; // 이 링크는 '방금 복사'가 아니므로 자동 다운로드 대상에서 제외
     setStatus('클립보드에 링크가 있습니다 — 📋 또는 [불러오기]를 누르세요');

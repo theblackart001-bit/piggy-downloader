@@ -126,20 +126,24 @@ class YtDlpEngine {
    * @param {function} onProgress      진행률 콜백
    */
   async download(job, onProgress) {
-    // 🧵 Threads: 숨긴 창으로 글을 열어 실제 mp4/이미지 주소를 잡아낸 뒤 그걸 받는다.
+    // 🧵 Threads: 숨긴 창으로 글을 열어 실제 mp4/이미지 주소를 잡아낸 뒤 **전부** 받는다.
+    //   유튜브처럼 주소만 주면 되도록, 한 글에 영상·사진이 여럿이어도 모두 저장한다.
     if (threads.shouldHandle(job.url)) {
       const meta = await threads.resolve(job.url, {
         cookiesFile: job.cookies?.file || null,
         onProgress,
       });
-      job = {
-        ...job,
-        url: meta.directUrl,
-        _direct: true,
-        _threadsCode: meta.code,
-        _threadsTitle: meta.title,
-      };
-      return this._spawnDownload(job, onProgress);
+      // 오디오 모드면 영상만 받아 mp3 로 뽑는다(사진은 의미가 없다).
+      if (job.mode === 'audio' && meta.bestVideo) {
+        const j = { ...job, url: meta.bestVideo, _direct: true, _threadsCode: meta.code, _threadsTitle: meta.title };
+        return this._spawnDownload(j, onProgress);
+      }
+      const r = await threads.downloadAll(meta, job.outputDir, { onProgress });
+      if (onProgress) {
+        onProgress({ type: 'progress', percent: 100 });
+        onProgress({ type: 'stage', stage: 'done', text: `🧵 ${r.files.length}개 저장 완료` });
+      }
+      return { ok: true, file: r.first, files: r.files };
     }
     // 인스타 등: 로그인 없이 직접 미디어 URL로 해석 후 그 URL을 다운로드.
     //  ⚠️ 쿠키를 등록했다면 리졸버를 쓰지 않는다 — 쿠키가 있으면 yt-dlp 가
@@ -329,7 +333,13 @@ class YtDlpEngine {
       // 최고 화질 비디오 + 최고 오디오 병합, 실패 시 단일 best
       args.push(
         '-f',
-        `bv*${cap}+ba/b${cap}/bv*+ba/b`,
+        // ★ H.264(avc1) 를 먼저 고른다 — '가장 큰 숫자'보다 '어디서나 열리는 것'이 낫다.
+        //   유튜브 4K/1440p 는 AV1·VP9 로만 제공되는데,
+        //     · 윈도우 탐색기가 AV1 썸네일을 못 만들어 세로 영상이 가로 아이콘으로 보이고
+        //     · 브루·캡컷 등 편집기에서 못 읽거나 버벅인다.
+        //   H.264 는 쇼츠 기준 1080x1920 까지 나오며 그게 쇼츠 표준 해상도다.
+        //   H.264 가 아예 없는 영상은 기존대로 최고화질(AV1/VP9)로 받는다.
+        `bv*[vcodec^=avc1]${cap}+ba/b[vcodec^=avc1]${cap}/bv*${cap}+ba/b${cap}/bv*+ba/b`,
         '--merge-output-format',
         'mp4',
         '--add-metadata',

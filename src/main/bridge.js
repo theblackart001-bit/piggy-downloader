@@ -9,7 +9,7 @@ const { clipboard } = require('electron');
  *  2) 로컬 HTTP 서버: 크롬 확장의 플로팅 버튼이 호출 -> 다운로드 추가
  */
 
-const VIDEO_HOST = /(youtu\.?be|youtube\.com|tiktok\.com|instagram\.com|vimeo\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|naver\.com|kakao|twitch\.tv|bilibili\.com|dailymotion\.com)/i;
+const VIDEO_HOST = /(youtu\.?be|youtube\.com|tiktok\.com|instagram\.com|threads\.(net|com)|vimeo\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|naver\.com|kakao|twitch\.tv|bilibili\.com|dailymotion\.com)/i;
 const PORT = 53472; // 크롬 확장과 약속된 고정 포트
 
 function isVideoUrl(text) {
