@@ -102,7 +102,8 @@
         "repo": "piggy-downloader",
         "releaseType": "release"
       }
-    ]
+    ],
+    "artifactName": "PiggyDownloader-${version}-${arch}.${ext}"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",

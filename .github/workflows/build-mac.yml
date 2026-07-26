@@ -66,15 +66,24 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --mac zip --arm64 --x64 --publish never
 
-      # dmg 는 '있으면 좋은 것'. 실패해도 zip 으로 배포는 가능하므로 빌드를 멈추지 않는다.
-      # 러너에 남은 볼륨이 detach 를 막는 경우가 있어 미리 정리하고 시도한다.
-      - name: dmg 빌드 (선택, 실패해도 계속)
+      # dmg 는 '있으면 좋은 것'(zip 만으로도 설치·자동업데이트 다 된다).
+      # CI 에서 hdiutil detach 가 자주 깨지므로 **아키텍처별로 따로** 만든다 —
+      # 한쪽이 실패해도 다른 쪽은 살아남게.
+      - name: dmg 빌드 — Apple Silicon (선택)
         continue-on-error: true
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           for V in /Volumes/Piggy*; do [ -d "$V" ] && hdiutil detach -force "$V" || true; done
-          npx electron-builder --mac dmg --arm64 --x64 --publish never || echo "dmg 실패 — zip 으로 배포"
+          npx electron-builder --mac dmg --arm64 --publish never
+
+      - name: dmg 빌드 — Intel (선택)
+        continue-on-error: true
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          for V in /Volumes/Piggy*; do [ -d "$V" ] && hdiutil detach -force "$V" || true; done
+          npx electron-builder --mac dmg --x64 --publish never
 
       - name: 산출물 확인
         run: ls -la dist/*.zip dist/*.dmg 2>/dev/null || ls -la dist/
