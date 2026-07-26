@@ -15,6 +15,9 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    # 릴리즈에 파일을 붙이려면 쓰기 권한이 필요하다(기본 토큰은 읽기 전용 → HTTP 403).
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -55,10 +58,13 @@ jobs:
       # zip 을 '먼저·따로' 만든다. 이유 두 가지:
       #  ① mac 자동 업데이트(electron-updater)는 dmg 가 아니라 **zip** 을 요구한다.
       #  ② dmg 생성은 CI 에서 자주 깨진다(hdiutil detach 실패) → zip 이 함께 죽으면 안 된다.
-      - name: zip 빌드 (arm64 + x64) — 필수
+      # ⚠️ --arm64 --x64 를 반드시 붙인다. CLI 로 타깃(zip/dmg)을 지정하면
+      #    package.json 의 arch 목록이 무시되고 '러너의 아키텍처'만 빌드된다.
+      #    러너가 Apple Silicon 이라 그냥 두면 Intel 맥 사용자가 빠진다.
+      - name: zip 빌드 (Apple Silicon + Intel) — 필수
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac zip --publish never
+        run: npx electron-builder --mac zip --arm64 --x64 --publish never
 
       # dmg 는 '있으면 좋은 것'. 실패해도 zip 으로 배포는 가능하므로 빌드를 멈추지 않는다.
       # 러너에 남은 볼륨이 detach 를 막는 경우가 있어 미리 정리하고 시도한다.
@@ -68,7 +74,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           for V in /Volumes/Piggy*; do [ -d "$V" ] && hdiutil detach -force "$V" || true; done
-          npx electron-builder --mac dmg --publish never || echo "dmg 실패 — zip 으로 배포"
+          npx electron-builder --mac dmg --arm64 --x64 --publish never || echo "dmg 실패 — zip 으로 배포"
 
       - name: 산출물 확인
         run: ls -la dist/*.zip dist/*.dmg 2>/dev/null || ls -la dist/
@@ -82,7 +88,9 @@ jobs:
           echo "업로드: ${FILES[*]}"
           gh release upload "${{ inputs.tag }}" "${FILES[@]}" --clobber --repo "${{ github.repository }}"
 
+      # 릴리즈 첨부가 실패하더라도 산출물은 남겨 손으로 받을 수 있게 한다.
       - name: 빌드 결과 보관(다운로드용)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mac-build
