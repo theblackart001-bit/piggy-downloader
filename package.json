@@ -1,7 +1,7 @@
 {
   "name": "piggy-downloader",
   "productName": "Piggy Downloader",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "1000+ 사이트 영상·오디오 다운로더 (yt-dlp + ffmpeg 내장)",
   "author": "AI부업플랜 <callos9987@gmail.com>",
   "license": "MIT",
