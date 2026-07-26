@@ -56,9 +56,11 @@ if (MULTI_OS) { mkdir(winDir); mkdir(path.join(STAGE, 'macOS')); }
 //      몇 주 뒤 "유튜브만 안 돼요" 상태가 된다. (+ZIP 이 두 배가 되고 실행도 느리다)
 //      → 설치본만 배포 = 모두가 자동 업데이트를 받는다.
 //    latest.yml 은 GitHub Releases 의 자동업데이트용 메타라 배포 ZIP 에는 넣지 않음(SB 와 동일).
+// ⚠️ package.json 의 build.artifactName 을 바꾸면 여기 원본명도 같이 바꿔야 한다.
+//    (공백 없는 이름으로 통일 — GitHub 이 공백을 '.' 으로 바꿔 latest.yml 과 어긋나던 문제)
 const winCopies = [
   // [dist 원본명, 배포 ZIP 내 파일명]
-  [`Piggy Downloader Setup ${VERSION}.exe`, `Piggy Downloader-${VERSION}-x64.exe`],
+  [`PiggyDownloader-${VERSION}-x64.exe`, `Piggy Downloader-${VERSION}-x64.exe`],
 ];
 const winMade = [];
 for (const [srcName, dstName] of winCopies) {
@@ -67,6 +69,13 @@ for (const [srcName, dstName] of winCopies) {
   else console.warn('[pkg] (경고) 없음:', srcName);
 }
 console.log('[pkg] Windows 산출물 복사:', winMade.join(' · ') || '(없음)');
+// 설치 파일이 빠진 ZIP 이 나가면 안 된다 — 이름 규칙이 바뀌면 조용히 누락될 수 있어 여기서 막는다.
+if (!winMade.length) {
+  console.error('\n❌ 설치 파일을 찾지 못했습니다. `npx electron-builder --win` 을 먼저 실행하세요.');
+  console.error(`   찾은 위치: ${DIST}`);
+  console.error(`   기대한 이름: ${winCopies.map(([s]) => s).join(', ')}`);
+  process.exit(1);
+}
 
 // 3) macOS 산출물 — dmg 가 있을 때만 넣는다.
 //    없으면 macOS 폴더 자체를 만들지 않는다. 대신 Mac 사용자가 헤매지 않도록
@@ -76,16 +85,66 @@ if (MULTI_OS) {
   console.log('[pkg] macOS dmg 복사:', dmgs.join(', '));
 } else {
   const note = [
-    'Mac 을 쓰고 계신가요?',
+    '════════════════════════════════════════════',
+    '  Mac 을 쓰고 계신가요?  Mac 용도 있습니다.',
+    '════════════════════════════════════════════',
     '',
-    '이 프로그램은 현재 Windows 전용입니다.',
-    '지금 들어 있는 설치 파일(.exe)은 Mac 에서는 열리지 않습니다.',
+    '이 폴더의 설치 파일(.exe)은 Windows 용이라 Mac 에서는 열리지 않습니다.',
+    'Mac 용은 아래에서 받아주세요.',
     '',
-    'Mac 용은 준비 중입니다. 나오면 안내드리겠습니다.',
-    '문의: AI부업플랜 / callos9987@gmail.com',
+    '  https://github.com/theblackart001-bit/piggy-downloader/releases/latest',
     '',
-    '(Mac 에서 꼭 지금 쓰셔야 한다면, 윈도우가 설치된 PC 나',
-    ' 회사 PC 에서 사용하시는 방법밖에 없습니다. 죄송합니다.)',
+    '',
+    '■ 어떤 파일을 받아야 하나요?',
+    '',
+    '  내 Mac 이 어느 쪽인지 모르시면:',
+    '  화면 왼쪽 위 사과() 아이콘 → "이 Mac에 관하여" 를 눌러보세요.',
+    '',
+    '  · "칩: Apple M1 / M2 / M3 ..." 라고 나오면',
+    '      →  PiggyDownloader-1.3.0-arm64.dmg',
+    '',
+    '  · "프로세서: Intel ..." 이라고 나오면',
+    '      →  PiggyDownloader-1.3.0-x64.dmg',
+    '',
+    '',
+    '■ 설치 방법',
+    '',
+    '  1) 받은 .dmg 파일을 두 번 눌러 엽니다.',
+    '  2) 창이 열리면 🐷 아이콘을 "응용 프로그램" 폴더로 끌어다 놓습니다.',
+    '  3) 응용 프로그램에서 실행합니다.',
+    '',
+    '',
+    '■ "손상되었기 때문에 열 수 없습니다" 라고 나오면  ★중요',
+    '',
+    '  프로그램에 문제가 있는 게 아닙니다.',
+    '  애플 인증서(연 13만원)를 아직 붙이지 않아서 나오는 안내입니다.',
+    '  아래대로 하시면 정상적으로 열립니다.',
+    '',
+    '  1) 응용 프로그램 폴더에서 🐷 아이콘을 찾습니다.',
+    '  2) 아이콘을 마우스 오른쪽 버튼(또는 control + 클릭) 으로 누릅니다.',
+    '  3) 메뉴에서 "열기" 를 선택합니다.',
+    '  4) 경고창이 뜨면 다시 한 번 "열기" 를 누릅니다.',
+    '',
+    '  ※ 그래도 안 되면:',
+    '     시스템 설정 → 개인정보 보호 및 보안 → 아래로 스크롤 →',
+    '     "확인 없이 열기" 버튼을 누르시면 됩니다.',
+    '  ※ 이 과정은 처음 한 번만 하시면 됩니다.',
+    '',
+    '',
+    '■ 참고',
+    '',
+    '  · 사용법은 Windows 와 똑같습니다. 함께 있는 "사용매뉴얼.pdf" 를 보세요.',
+    '  · Mac 에서 AI 자막을 쓰시려면 터미널에 아래를 한 번 입력해 주세요.',
+    '      brew install whisper-cpp',
+    '    (영상 다운로드는 이것 없이도 바로 됩니다)',
+    '',
+    '',
+    '════════════════════════════════════════════',
+    '  앱이 제대로 작동하지 않을 경우 이메일로 연락주시면',
+    '  빠르게 해결해드리겠습니다.',
+    '',
+    '  callos9987@gmail.com  /  AI부업플랜',
+    '════════════════════════════════════════════',
     '',
   ].join('\r\n');
   // ⚠️ BOM 을 붙여 저장한다. BOM 없는 UTF-8 한글 txt 는 메모장 등에서 깨져 보일 수 있다
