@@ -28,4 +28,14 @@ contextBridge.exposeInMainWorld('piggy', {
   updateYtdlp: () => ipcRenderer.invoke('ytdlp:update'),
   getYtdlpVersion: () => ipcRenderer.invoke('ytdlp:version'),
   openTranscribe: (url) => ipcRenderer.invoke('preview:open', url),
+
+  // 📜 다운로드 기록
+  historyList: () => ipcRenderer.invoke('history:list'),
+  historyClear: () => ipcRenderer.invoke('history:clear'),
+  historyRemove: (key) => ipcRenderer.invoke('history:remove', key),
+
+  // 🔑 쿠키(로그인 필요한 사이트)
+  pickCookies: () => ipcRenderer.invoke('cookies:pick'),
+  clearCookies: () => ipcRenderer.invoke('cookies:clear'),
+  useBrowserCookies: (b) => ipcRenderer.invoke('cookies:useBrowser', b),
 });

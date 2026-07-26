@@ -2,8 +2,42 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const { getPaths, envWithBin, YTDLP_BASE_ARGS } = require('./binaries');
 const resolvers = require('./resolvers');
+
+/**
+ * 🔑 로그인이 필요한 콘텐츠용 쿠키 인자.
+ *
+ * 인스타그램·샤오홍슈 등은 로그인해야 보이는 글이 많다. yt-dlp 에 쿠키를 주면 받을 수 있다.
+ * 두 가지 방식을 지원한다(사용자가 고른 쪽만 쓴다):
+ *   ① cookies.txt 파일   — 가장 확실. 브라우저 확장으로 내보낸 파일을 등록.
+ *   ② 브라우저에서 직접  — 편하지만 최신 크롬은 쿠키를 App-Bound 암호화해 실패할 수 있다.
+ *
+ * ⚠️ 쿠키는 '로그인한 나'와 같은 권한이다. 본계정 말고 **부계정 쿠키**를 권한다.
+ *    쿠키 값은 이 앱이 어디로도 보내지 않는다(로컬에서 yt-dlp 에만 전달).
+ */
+function cookieArgs(job) {
+  const c = job && job.cookies;
+  if (!c || !c.mode || c.mode === 'none') return [];
+  if (c.mode === 'file' && c.file && fs.existsSync(c.file)) return ['--cookies', c.file];
+  if (c.mode === 'browser' && c.browser) return ['--cookies-from-browser', c.browser];
+  return [];
+}
+
+/**
+ * ✂️ 구간 다운로드 — 긴 영상에서 필요한 부분만.
+ * 시작/끝은 "90" 또는 "1:30" 또는 "01:02:03" 형식을 받는다.
+ * 끝을 비우면 끝까지, 시작을 비우면 처음부터.
+ */
+function sectionArgs(job) {
+  const s = job && job.section;
+  if (!s || (!s.start && !s.end)) return [];
+  const from = (s.start || '0').trim();
+  const to = (s.end || 'inf').trim();
+  // --force-keyframes-at-cuts: 자른 지점이 깨지지 않게(없으면 앞부분이 검게 나올 수 있다)
+  return ['--download-sections', `*${from}-${to}`, '--force-keyframes-at-cuts'];
+}
 
 /**
  * yt-dlp 래퍼: 메타데이터 조회 + 다운로드 + 진행률/취소 관리.
@@ -55,15 +89,18 @@ class YtDlpEngine {
    * URL 메타데이터 조회 (단일 영상 또는 재생목록 평면 정보).
    * @returns {Promise<object>} yt-dlp -J 결과(JSON)
    */
-  async getInfo(url) {
+  async getInfo(url, opts = {}) {
     // 인스타 등 쿠키가 막는 사이트는 외부 리졸버로 메타 조회(로그인 불필요)
-    if (resolvers.shouldResolve(url)) {
+    // 단, 사용자가 쿠키를 등록했다면 리졸버보다 쿠키가 더 정확하므로 yt-dlp 로 간다.
+    const hasCookies = !!(opts.cookies && opts.cookies.mode && opts.cookies.mode !== 'none');
+    if (!hasCookies && resolvers.shouldResolve(url)) {
       return resolvers.getInfoLike(url);
     }
     const args = [
       '-J',
       '--no-warnings',
       '--no-playlist', // 미리보기는 단일 항목만; 재생목록은 다운로드 시 처리
+      ...cookieArgs(opts),
       url,
     ];
     const { stdout } = await this._run(args);
@@ -84,8 +121,11 @@ class YtDlpEngine {
    * @param {function} onProgress      진행률 콜백
    */
   async download(job, onProgress) {
-    // 인스타 등: 로그인 없이 직접 미디어 URL로 해석 후 그 URL을 다운로드
-    if (resolvers.shouldResolve(job.url)) {
+    // 인스타 등: 로그인 없이 직접 미디어 URL로 해석 후 그 URL을 다운로드.
+    //  ⚠️ 쿠키를 등록했다면 리졸버를 쓰지 않는다 — 쿠키가 있으면 yt-dlp 가
+    //    비공개·로그인 전용 게시물까지 정식으로 처리하므로 그쪽이 정확하다.
+    const hasCookies = !!(job.cookies && job.cookies.mode && job.cookies.mode !== 'none');
+    if (!hasCookies && resolvers.shouldResolve(job.url)) {
       if (onProgress) onProgress({ type: 'stage', stage: 'resolving', text: '🔗 인스타그램 링크 분석 중...' });
       const meta = await resolvers.resolve(job.url);
       job = { ...job, url: meta.directUrl, _direct: true, _igShortcode: meta.shortcode };
@@ -234,6 +274,8 @@ class YtDlpEngine {
       'DLP|%(progress._percent_str)s|%(progress._total_bytes_estimate_str)s|%(progress._speed_str)s|%(progress._eta_str)s',
       // 최종 산출 파일 경로를 후처리 후 출력(자막 생성용)
       '--print', 'after_move:FILE|%(filepath)s',
+      ...cookieArgs(job),
+      ...sectionArgs(job),
     ];
 
     if (job.playlist && !direct) {

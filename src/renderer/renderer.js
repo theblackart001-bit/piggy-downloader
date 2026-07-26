@@ -40,7 +40,118 @@ const els = {
   ytdlpInfo: $('#ytdlpInfo'),
   appVersion: $('#appVersion'),
   tpl: $('#queueItemTpl'),
+  // ✂️ 구간
+  askSave: $('#askSaveCheck'),
+  sectionCheck: $('#sectionCheck'),
+  sectionInputs: $('#sectionInputs'),
+  secStart: $('#secStart'),
+  secEnd: $('#secEnd'),
+  // 📜 받은 목록
+  historyBtn: $('#historyBtn'),
+  historyModal: $('#historyModal'),
+  historyList: $('#historyList'),
+  historyCloseBtn: $('#historyCloseBtn'),
+  historyClearBtn: $('#historyClearBtn'),
+  // 🔑 로그인(쿠키)
+  cookieBtn: $('#cookieBtn'),
+  cookieModal: $('#cookieModal'),
+  cookieCloseBtn: $('#cookieCloseBtn'),
+  cookiePickBtn: $('#cookiePickBtn'),
+  cookieClearBtn: $('#cookieClearBtn'),
+  cookieState: $('#cookieState'),
 };
+
+/* ============ ✂️ 구간 · 📜 기록 · 🔑 쿠키 ============ */
+function bindExtras() {
+  // ── 구간 다운로드 ──
+  if (els.sectionCheck) {
+    els.sectionCheck.addEventListener('change', () => {
+      els.sectionInputs.classList.toggle('hidden', !els.sectionCheck.checked);
+      if (els.sectionCheck.checked) els.secStart.focus();
+    });
+  }
+
+  // ── 받은 목록 ──
+  const openHistory = async () => {
+    const rows = await window.piggy.historyList();
+    els.historyList.innerHTML = rows.length
+      ? rows.map((r) => {
+          const name = (r.file || r.url).split(/[\\/]/).pop();
+          const mb = r.size ? (r.size / 1024 / 1024).toFixed(1) + 'MB' : '';
+          const when = (r.at || '').slice(0, 10);
+          return `<li>
+            <span class="t ${r.exists ? '' : 'gone'}" title="${esc(r.file || r.url)}">${r.mode === 'audio' ? '🎵' : '🎬'} ${esc(name)}</span>
+            <span class="m">${mb} · ${when}</span>
+            ${r.exists ? `<button class="mini-btn h-open" data-f="${esc(r.file)}">폴더 열기</button>` : '<span class="m">파일 없음</span>'}
+            <button class="mini-btn h-again" data-u="${esc(r.url)}">다시 받기</button>
+          </li>`;
+        }).join('')
+      : '<li><span class="t">아직 받은 것이 없습니다.</span></li>';
+    els.historyModal.classList.remove('hidden');
+  };
+  els.historyBtn?.addEventListener('click', openHistory);
+  els.historyCloseBtn?.addEventListener('click', () => els.historyModal.classList.add('hidden'));
+  els.historyClearBtn?.addEventListener('click', async () => {
+    await window.piggy.historyClear();
+    openHistory();
+  });
+  els.historyList?.addEventListener('click', async (e) => {
+    const open = e.target.closest('.h-open');
+    if (open) return window.piggy.showItem(open.dataset.f);
+    const again = e.target.closest('.h-again');
+    if (again) {
+      els.historyModal.classList.add('hidden');
+      els.url.value = again.dataset.u;
+      state.lastAutoUrl = again.dataset.u;
+      await fetchInfo();
+      if (state.pendingInfo) addCurrentToQueue();
+    }
+  });
+
+  // ── 로그인(쿠키) ──
+  const showCookieState = () => {
+    const c = state.settings?.cookies || {};
+    els.cookieState.textContent =
+      c.mode === 'file' ? '현재: 쿠키 파일 연결됨 ✅'
+      : c.mode === 'browser' ? `현재: ${c.browser} 브라우저에서 가져오기 ✅`
+      : '현재: 연결 안 됨';
+    if (els.cookieBtn) els.cookieBtn.textContent = c.mode && c.mode !== 'none' ? '🔑 로그인됨' : '🔑 로그인';
+  };
+  els.cookieBtn?.addEventListener('click', () => { showCookieState(); els.cookieModal.classList.remove('hidden'); });
+  els.cookieCloseBtn?.addEventListener('click', () => els.cookieModal.classList.add('hidden'));
+  els.cookiePickBtn?.addEventListener('click', async () => {
+    const r = await window.piggy.pickCookies();
+    if (r?.ok) {
+      state.settings = await window.piggy.getSettings();
+      showCookieState();
+      setStatus('🔑 쿠키를 등록했습니다 — 이제 로그인 전용 영상도 받아집니다');
+    } else if (r?.error) setStatus(`⚠ 쿠키 등록 실패: ${r.error}`);
+  });
+  document.querySelectorAll('.cookie-browser').forEach((b) => {
+    b.addEventListener('click', async () => {
+      await window.piggy.useBrowserCookies(b.dataset.b);
+      state.settings = await window.piggy.getSettings();
+      showCookieState();
+      setStatus(`🔑 ${b.dataset.b} 에서 쿠키를 가져오도록 설정했습니다`);
+    });
+  });
+  els.cookieClearBtn?.addEventListener('click', async () => {
+    await window.piggy.clearCookies();
+    state.settings = await window.piggy.getSettings();
+    showCookieState();
+    setStatus('🔑 로그인 연결을 해제했습니다');
+  });
+  showCookieState();
+
+  // 모달 바깥을 누르면 닫기
+  [els.historyModal, els.cookieModal].forEach((m) => {
+    m?.addEventListener('click', (e) => { if (e.target === m) m.classList.add('hidden'); });
+  });
+}
+
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 /* ============ yt-dlp 엔진 상태 ============ */
 // 유튜브가 구조를 바꾸면 yt-dlp 가 최신이어야 계속 받아진다.
@@ -92,6 +203,11 @@ async function init() {
     els.autoDl.checked = state.settings.autoDownloadOnCopy !== false;
     els.autoDl.addEventListener('change', persistPrefs);
   }
+  // 📁 저장 위치 묻기 — 기본 꺼짐(다운로드 폴더 고정이 기본 설계)
+  if (els.askSave) {
+    els.askSave.checked = !!state.settings.askSaveLocation;
+    els.askSave.addEventListener('change', persistPrefs);
+  }
   setMode(state.mode);
   updateFolderLabel();
   bindEvents();
@@ -99,6 +215,7 @@ async function init() {
   subscribeBridge();
   subscribeUpdates();
   subscribeYtdlp();
+  bindExtras();
   refreshEmptyState();
   await tryAutoPasteFromClipboard();
 }
@@ -199,6 +316,7 @@ function persistPrefs() {
     theme: document.body.dataset.theme,
     lastMode: state.mode,
     autoDownloadOnCopy: els.autoDl ? els.autoDl.checked : true,
+    askSaveLocation: els.askSave ? els.askSave.checked : false,
   };
   window.piggy.setSettings(state.settings);
 }
@@ -276,6 +394,13 @@ function addCurrentToQueue() {
     audioFormat: 'mp3',
     aiSubtitles: state.mode === 'video' && els.subs.checked, // 다운로드 후 AI 음성분석 자막
     playlist: false,
+    // ✂️ 구간 다운로드(체크했을 때만). 빈 칸은 처음/끝으로 해석된다.
+    section: els.sectionCheck && els.sectionCheck.checked
+      ? { start: (els.secStart.value || '').trim(), end: (els.secEnd.value || '').trim() }
+      : null,
+    // 📜 기록에 남길 메타
+    title: info.title || '',
+    thumbnail: info.thumbnail || '',
   };
   const el = buildQueueItem(id, info, job);
   els.queue.prepend(el);

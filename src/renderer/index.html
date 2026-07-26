@@ -50,6 +50,24 @@
         <label class="check" title="영상 주소를 복사하면 불러오기·추가 없이 곧바로 다운로드가 시작됩니다">
           <input type="checkbox" id="autoDlCheck" checked /> ⚡ 복사하면 바로 받기
         </label>
+
+        <label class="check" title="켜면 받을 때마다 저장할 폴더를 물어봅니다. 꺼두면 항상 다운로드 폴더에 저장됩니다">
+          <input type="checkbox" id="askSaveCheck" /> 📁 저장 위치 묻기
+        </label>
+
+        <label class="check" title="영상에서 원하는 구간만 잘라서 받습니다">
+          <input type="checkbox" id="sectionCheck" /> ✂️ 구간만
+        </label>
+
+        <span id="sectionInputs" class="hidden" style="display:inline-flex;gap:6px;align-items:center;">
+          <input id="secStart" type="text" placeholder="시작 (0:30)" style="width:96px;padding:6px 8px;border-radius:8px;border:1px solid #d7e6f3;" />
+          <span style="color:#8aa4bb;">~</span>
+          <input id="secEnd" type="text" placeholder="끝 (2:00)" style="width:96px;padding:6px 8px;border-radius:8px;border:1px solid #d7e6f3;" />
+        </span>
+
+        <span class="spacer" style="flex:1"></span>
+        <button id="historyBtn" class="mini-btn" title="지금까지 받은 목록">📜 받은 목록</button>
+        <button id="cookieBtn" class="mini-btn" title="로그인해야 보이는 영상을 받으려면 쿠키를 등록하세요">🔑 로그인</button>
       </div>
     </section>
 
@@ -84,6 +102,73 @@
       </div>
     </section>
   </main>
+
+  <!-- 📜 받은 목록 -->
+  <div id="historyModal" class="pg-modal hidden">
+    <div class="pg-modal-box">
+      <div class="pg-modal-head">
+        <b>📜 지금까지 받은 목록</b>
+        <span style="flex:1"></span>
+        <button id="historyClearBtn" class="text-btn">전체 지우기</button>
+        <button id="historyCloseBtn" class="icon-btn">✕</button>
+      </div>
+      <p class="pg-hint">기록만 지워지고 받은 파일은 그대로 남습니다.</p>
+      <ul id="historyList" class="pg-list"></ul>
+    </div>
+  </div>
+
+  <!-- 🔑 로그인(쿠키) -->
+  <div id="cookieModal" class="pg-modal hidden">
+    <div class="pg-modal-box">
+      <div class="pg-modal-head">
+        <b>🔑 로그인해야 보이는 영상 받기</b>
+        <span style="flex:1"></span>
+        <button id="cookieCloseBtn" class="icon-btn">✕</button>
+      </div>
+
+      <p class="pg-hint">
+        인스타그램·샤오홍슈처럼 <b>로그인해야 보이는 영상</b>은 그냥은 받아지지 않습니다.<br />
+        아래에서 한 번만 연결해두면 그다음부터는 자동으로 됩니다.
+      </p>
+
+      <div class="pg-note">
+        🔒 <b>비밀번호는 받지 않습니다.</b> 로그인 상태를 나타내는 쿠키만 사용하며,
+        이 파일은 <b>내 컴퓨터 안에만</b> 저장되고 어디로도 전송되지 않습니다.<br />
+        👤 되도록 <b>부계정</b>으로 로그인한 쿠키를 쓰시길 권합니다.
+      </div>
+
+      <div class="pg-step">
+        <b>방법 1. 쿠키 파일 등록 <span class="pg-badge">권장 · 가장 확실</span></b>
+        <ol>
+          <li>크롬에 확장 <b>“Get cookies.txt LOCALLY”</b> 를 설치합니다.</li>
+          <li>인스타그램 등에 <b>로그인한 상태</b>로 그 사이트를 엽니다.</li>
+          <li>확장 아이콘 클릭 → <b>Export</b> → <code>cookies.txt</code> 저장</li>
+          <li>아래 버튼으로 그 파일을 고릅니다.</li>
+        </ol>
+        <button id="cookiePickBtn" class="primary-btn">📂 cookies.txt 파일 고르기</button>
+      </div>
+
+      <div class="pg-step">
+        <b>방법 2. 브라우저에서 바로 가져오기 <span class="pg-badge warn">간편하지만 실패할 수 있음</span></b>
+        <p class="pg-hint" style="margin:6px 0;">
+          최신 크롬은 보안이 강화돼 실패할 수 있습니다. 안 되면 방법 1을 쓰세요.<br />
+          <b>브라우저를 완전히 종료한 뒤</b> 눌러야 잘 됩니다.
+        </p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="mini-btn cookie-browser" data-b="chrome">Chrome</button>
+          <button class="mini-btn cookie-browser" data-b="edge">Edge</button>
+          <button class="mini-btn cookie-browser" data-b="whale">Whale</button>
+          <button class="mini-btn cookie-browser" data-b="firefox">Firefox</button>
+        </div>
+      </div>
+
+      <div class="pg-modal-foot">
+        <span id="cookieState" class="pg-hint">현재: 연결 안 됨</span>
+        <span style="flex:1"></span>
+        <button id="cookieClearBtn" class="text-btn">연결 해제</button>
+      </div>
+    </div>
+  </div>
 
   <footer class="statusbar">
     <span id="statusText">준비됨</span>

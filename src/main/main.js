@@ -9,6 +9,7 @@ const bridge = require('./bridge');
 const whisper = require('./whisper');
 const updater = require('./updater');
 const ytdlpUpdater = require('./ytdlp-updater');
+const history = require('./history');
 
 const IS_DEV = process.argv.includes('--dev');
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
@@ -204,9 +205,19 @@ ipcMain.handle('clipboard:read', () => clipboard.readText().trim());
 ipcMain.handle('shell:openPath', (_e, p) => shell.openPath(p));
 ipcMain.handle('shell:showItem', (_e, p) => shell.showItemInFolder(p));
 
+// 설정에 저장된 쿠키 설정을 job 에 실어준다(로그인 필요한 사이트용).
+function cookiesFromSettings() {
+  const s = loadSettings();
+  const c = s.cookies || {};
+  if (!c.mode || c.mode === 'none') return null;
+  if (c.mode === 'file' && c.file && fs.existsSync(c.file)) return { mode: 'file', file: c.file };
+  if (c.mode === 'browser' && c.browser) return { mode: 'browser', browser: c.browser };
+  return null;
+}
+
 ipcMain.handle('info:get', async (_e, url) => {
   try {
-    const info = await engine.getInfo(url);
+    const info = await engine.getInfo(url, { cookies: cookiesFromSettings() });
     return { ok: true, info: pickInfo(info) };
   } catch (err) {
     return { ok: false, error: String(err.message || err) };
@@ -214,8 +225,22 @@ ipcMain.handle('info:get', async (_e, url) => {
 });
 
 ipcMain.handle('download:start', async (e, job) => {
-  // 저장 위치는 무조건 다운로드 폴더로 강제
-  job = { ...job, outputDir: app.getPath('downloads') };
+  const settings = loadSettings();
+  // 저장 위치: 기본은 다운로드 폴더. '매번 묻기'가 켜져 있으면 폴더를 고른다.
+  let outputDir = app.getPath('downloads');
+  if (settings.askSaveLocation) {
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '저장할 폴더를 고르세요',
+      defaultPath: outputDir,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (r.canceled || !r.filePaths?.[0]) {
+      e.sender.send('download:progress', { id: job.id, type: 'canceled' });
+      return { ok: false, canceled: true };
+    }
+    outputDir = r.filePaths[0];
+  }
+  job = { ...job, outputDir, cookies: cookiesFromSettings() };
   const send = (payload) =>
     e.sender.send('download:progress', { id: job.id, ...payload });
   try {
@@ -233,12 +258,51 @@ ipcMain.handle('download:start', async (e, job) => {
         send({ type: 'stage', stage: 'subwarn', text: `⚠ AI 자막 실패: ${subErr.message}` });
       }
     }
+    // 📜 기록에 남긴다 — 나중에 '어디 받았더라' 를 없앤다.
+    try {
+      let size = 0;
+      try { size = res.file ? fs.statSync(res.file).size : 0; } catch (_) { /* 무시 */ }
+      history.add({ url: job.url, title: job.title, file: res.file, mode: job.mode, thumbnail: job.thumbnail, size });
+    } catch (_) { /* 기록 실패가 다운로드를 망치면 안 된다 */ }
     send({ type: 'done', outputDir: job.outputDir, file: res.file });
     return { ok: true };
   } catch (err) {
     send({ type: 'error', error: String(err.message || err) });
     return { ok: false, error: String(err.message || err) };
   }
+});
+
+/* ---------- 📜 기록 ---------- */
+ipcMain.handle('history:list', () => history.list());
+ipcMain.handle('history:clear', () => history.clear());
+ipcMain.handle('history:remove', (_e, key) => history.remove(key));
+
+/* ---------- 🔑 쿠키(로그인 필요한 사이트) ---------- */
+// cookies.txt 파일 고르기. 브라우저 확장으로 내보낸 파일을 등록한다.
+ipcMain.handle('cookies:pick', async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: 'cookies.txt 파일을 고르세요',
+    filters: [{ name: '쿠키 파일', extensions: ['txt'] }, { name: '모든 파일', extensions: ['*'] }],
+    properties: ['openFile'],
+  });
+  if (r.canceled || !r.filePaths?.[0]) return { ok: false };
+  const picked = r.filePaths[0];
+  // 원본이 지워져도 계속 쓰도록 앱 폴더로 복사해 둔다.
+  const dest = path.join(app.getPath('userData'), 'cookies.txt');
+  try { fs.copyFileSync(picked, dest); } catch (e) { return { ok: false, error: e.message }; }
+  const s = loadSettings();
+  saveSettings({ ...s, cookies: { mode: 'file', file: dest } });
+  return { ok: true, file: dest };
+});
+ipcMain.handle('cookies:clear', () => {
+  const s = loadSettings();
+  saveSettings({ ...s, cookies: { mode: 'none' } });
+  return { ok: true };
+});
+ipcMain.handle('cookies:useBrowser', (_e, browser) => {
+  const s = loadSettings();
+  saveSettings({ ...s, cookies: { mode: 'browser', browser } });
+  return { ok: true };
 });
 
 ipcMain.handle('download:cancel', (_e, id) => engine.cancel(id));
