@@ -41,4 +41,9 @@ contextBridge.exposeInMainWorld('piggy', {
   threadsLogin: () => ipcRenderer.invoke('threads:login'),
   threadsLoginStatus: () => ipcRenderer.invoke('threads:loginStatus'),
   threadsLogout: () => ipcRenderer.invoke('threads:logout'),
+
+  // 사이트별 앱 내 로그인 (threads · instagram · xhs)
+  siteStatus: () => ipcRenderer.invoke('site:status'),
+  siteLogin: (key) => ipcRenderer.invoke('site:login', key),
+  siteLogout: (key) => ipcRenderer.invoke('site:logout', key),
 });

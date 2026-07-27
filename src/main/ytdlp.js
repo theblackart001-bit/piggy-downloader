@@ -145,7 +145,20 @@ class YtDlpEngine {
         const where = r.dir ? ` → '${path.basename(r.dir)}' 폴더` : '';
         onProgress({ type: 'stage', stage: 'done', text: `🧵 ${r.files.length}개 저장 완료${where}` });
       }
-      return { ok: true, file: r.first, files: r.files, dir: r.dir };
+      // ⚠️ 로그인이 없으면 쓰레드가 글을 가려서 '일부만' 내려온다(실측: 4개짜리 글이 3개).
+      //    진행 로그로만 알리면 완료 표시에 덮여 사라진다 → 결과에 실어 보내
+      //    목록에 그대로 남게 한다. 조용히 일부만 주면 그게 전부인 줄 알게 된다.
+      return {
+        ok: true,
+        file: r.first,
+        files: r.files,
+        dir: r.dir,
+        partial: !!meta.restricted,
+        warning: meta.restricted
+          ? `일부만 받았습니다 (${r.files.length}개) — 로그인이 없어 쓰레드가 나머지를 가렸습니다. `
+            + `[🔑 로그인]에서 쓰레드 로그인 후 다시 받아주세요`
+          : null,
+      };
     }
     // 인스타 등: 로그인 없이 직접 미디어 URL로 해석 후 그 URL을 다운로드.
     //  ⚠️ 쿠키를 등록했다면 리졸버를 쓰지 않는다 — 쿠키가 있으면 yt-dlp 가
@@ -291,7 +304,7 @@ class YtDlpEngine {
     //     · 뒤에 [dQw4w9WgXcQ] 같은 영상 ID 가 붙었다
     //   → 제목만 쓰고, 길이는 150바이트로 잘라 윈도우 경로 길이 제한을 피한다.
     //     (파일명에 못 쓰는 문자 \ / : * ? " < > | 는 yt-dlp 가 알아서 바꿔준다)
-    // 스레드/인스타는 직접 미디어 URL 이라 yt-dlp 가 제목을 모른다 → 우리가 잡은 제목을 쓴다.
+    // 쓰레드/인스타는 직접 미디어 URL 이라 yt-dlp 가 제목을 모른다 → 우리가 잡은 제목을 쓴다.
     const safe = (s) => String(s || '').replace(/[\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
     const nameBase = direct && job._threadsCode
       ? (safe(job._threadsTitle) || `Threads ${job._threadsCode}`)

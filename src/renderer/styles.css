@@ -261,6 +261,9 @@ body[data-theme='dark'] .seg-item.active { background: var(--blue); color: #fff;
 .q-badge.mode { background: rgba(31, 155, 240, 0.14); color: var(--blue-deep); }
 .q-badge.quality { background: rgba(245, 197, 66, 0.22); color: var(--gold-deep); }
 .q-stage { font-size: 11.5px; color: var(--text-faint); font-weight: 600; }
+/* 일부만 받아졌을 때 — 흐린 회색으로 두면 '완료'로 착각한다 */
+.q-stage.warn { color: #b45309; white-space: normal; line-height: 1.45; }
+@media (prefers-color-scheme: dark) { .q-stage.warn { color: #fbbf24; } }
 
 .q-progress {
   height: 7px; background: var(--border); border-radius: 999px; overflow: hidden;
@@ -314,7 +317,15 @@ body[data-theme='dark'] .seg-item.active { background: var(--blue); color: #fff;
 .pg-modal.hidden { display: none; }
 .pg-modal-box { background: var(--card, #fff); color: inherit; border-radius: 16px; padding: 20px 22px;
   width: min(620px, 100%); max-height: 84vh; overflow: auto; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
-.pg-modal-head { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 6px; }
+/* 머리말은 스크롤해도 항상 위에 붙어 있게 — 닫기(✕)를 언제든 누를 수 있다 */
+.pg-modal-head { display: flex; align-items: center; gap: 8px; font-size: 15px;
+  position: sticky; top: 0; z-index: 2; background: var(--card, #fff);
+  margin: -20px -22px 6px; padding: 16px 22px 12px;
+  border-bottom: 1px solid rgba(128,160,190,.25); }
+/* 모달은 흰 배경이라 topbar용 흰색 아이콘 버튼이 보이지 않는다 → 따로 칠한다 */
+.pg-modal-head .icon-btn { flex: none; width: 32px; height: 32px; border-radius: 10px;
+  font-size: 16px; line-height: 1; background: rgba(128,160,190,.18); color: #15324a; }
+.pg-modal-head .icon-btn:hover { background: rgba(239,79,86,.16); color: #ef4f56; transform: none; }
 .pg-modal-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px;
   border-top: 1px solid rgba(128,160,190,.25); padding-top: 12px; }
 .pg-hint { font-size: 12.5px; opacity: .78; line-height: 1.6; margin: 4px 0; }
@@ -322,6 +333,55 @@ body[data-theme='dark'] .seg-item.active { background: var(--blue); color: #fff;
   border-radius: 10px; padding: 10px 12px; font-size: 12.5px; line-height: 1.7; margin: 10px 0; }
 .pg-step { border: 1px solid rgba(128,160,190,.28); border-radius: 12px; padding: 12px 14px; margin: 12px 0; }
 .pg-step ol { margin: 8px 0 10px; padding-left: 20px; font-size: 13px; line-height: 1.8; }
+/* 초보자용 단계 UI — 1단계만 하면 끝나게 보이도록 */
+.pg-lead { font-size: 13.5px; line-height: 1.7; margin: 6px 0 12px; }
+.step-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.step-num { flex: none; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12.5px; font-weight: 800;
+  background: var(--blue); color: #fff; }
+.step-num.soft { background: rgba(128,160,190,.35); color: #3d5b78; }
+.step-main { border-color: rgba(31,155,240,.45); background: rgba(31,155,240,.05); }
+.step-main .pg-hint { margin: 8px 0; }
+.chip { flex: none; font-size: 11.5px; font-weight: 700; white-space: nowrap;
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(128,160,190,.2); color: #4d6b88; }
+.chip.on { background: rgba(22,179,100,.16); color: #0d7a45; }
+.chip.wait { background: rgba(232,163,61,.2); color: #9a6a10; }
+.btn-block { display: block; width: 100%; }
+
+/* 사이트별 로그인 줄 — 한 줄에 [아이콘][설명][상태][로그인] 이 다 있다 */
+.site-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 12px; }
+.site-row { display: flex; align-items: center; gap: 12px;
+  border: 1px solid rgba(128,160,190,.28); border-radius: 12px; padding: 10px 12px;
+  background: var(--card, #fff); }
+.site-row.done { border-color: rgba(22,179,100,.45); background: rgba(22,179,100,.06); }
+.site-ico { flex: none; font-size: 22px; width: 30px; text-align: center; }
+.site-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.site-txt b { font-size: 13.5px; }
+.site-txt .pg-hint { margin: 0; font-size: 12px; }
+.site-row .site-login { flex: none; height: 38px; padding: 0 18px; font-size: 13.5px; border-radius: 10px; }
+.site-row.done .site-login { background: none; color: var(--blue-deep);
+  border: 2px solid rgba(31,155,240,.4); box-shadow: none; font-weight: 600; }
+
+/* 접어둔 고급 영역 — 필요할 때만 펼쳐 본다 */
+.pg-fold { border: 1px solid rgba(128,160,190,.28); border-radius: 12px; margin: 12px 0;
+  background: rgba(128,160,190,.05); }
+.pg-fold > summary { list-style: none; cursor: pointer; padding: 12px 14px; }
+.pg-fold > summary::-webkit-details-marker { display: none; }
+.pg-fold > summary:hover { background: rgba(128,160,190,.09); border-radius: 12px; }
+.fold-arrow { flex: none; color: var(--text-faint); font-size: 12px; transition: transform var(--dur) var(--ease); }
+.pg-fold[open] > summary .fold-arrow { transform: rotate(180deg); }
+.pg-fold-body { padding: 0 14px 12px; }
+.pg-fold-body .pg-step { background: var(--card, #fff); }
+
+/* 방법 1 완료 안내 — 4단계(파일 고르기)까지 끝났을 때만 보인다 */
+.pg-done { margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(22,179,100,.12); border: 1px solid rgba(22,179,100,.42);
+  color: #0d7a45; font-size: 12.5px; line-height: 1.7; }
+/* 모달 안 바깥 링크 — target=_blank 는 main 의 setWindowOpenHandler 가 기본 브라우저로 넘긴다 */
+.pg-link { color: var(--blue-deep); text-decoration: underline; text-underline-offset: 2px;
+  cursor: pointer; transition: color var(--dur) var(--ease); }
+.pg-link:hover { color: var(--blue-ink); }
 .pg-badge { font-size: 11px; background: #1f9bf0; color: #fff; border-radius: 999px; padding: 2px 8px; margin-left: 4px; }
 .pg-badge.warn { background: #e8a33d; }
 .pg-list { list-style: none; margin: 10px 0 0; padding: 0; }
@@ -332,11 +392,34 @@ body[data-theme='dark'] .seg-item.active { background: var(--blue); color: #fff;
 .pg-list .gone { opacity: .45; text-decoration: line-through; }
 
 /* 버튼 옆 인라인 안내 — 툴팁은 마우스를 올려야 보여서, 항상 보이게 둔다 */
+/* 로그인 안내 — 안 해두면 사진이 일부만 받아지므로 눈에 띄어야 한다.
+   흐릿한 회색 안내로 두면 그냥 지나치고, "왜 3장만 받아졌지?" 로 돌아온다. */
 .hint-inline {
-  font-size: 12px;
-  opacity: .72;
+  font-size: 12.5px;
   white-space: nowrap;
   align-self: center;
-  margin-left: 2px;
+  margin-left: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fff7e6;
+  border: 1px solid #f5c26b;
+  animation: hintPulse 2.4s ease-in-out infinite;
 }
-.hint-inline b { opacity: 1; font-weight: 600; }
+.hint-inline b { font-weight: 800; }
+@keyframes hintPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, .45); }
+  50%      { box-shadow: 0 0 0 5px rgba(245, 158, 11, 0); }
+}
+/* 한 곳이라도 로그인해두면 조용해진다 */
+.hint-inline.ok {
+  color: #15803d;
+  background: #f0fdf4;
+  border-color: #86efac;
+  animation: none;
+}
+@media (prefers-color-scheme: dark) {
+  .hint-inline { color: #fbbf24; background: #2a2010; border-color: #7c5a15; }
+  .hint-inline.ok { color: #4ade80; background: #0f2418; border-color: #206b3d; }
+}

@@ -67,8 +67,8 @@
 
         <span class="spacer" style="flex:1"></span>
         <button id="historyBtn" class="mini-btn" title="지금까지 받은 목록">📜 받은 목록</button>
-        <button id="cookieBtn" class="mini-btn" title="스레드는 여기서 한 번 로그인해두세요(사진이 일부만 받아지는 것을 막습니다). 인스타·샤오홍슈가 '로그인이 필요하다'며 안 받아질 때도 씁니다">🔑 로그인</button>
-        <span class="hint-inline">← <b>스레드</b>는 한 번 로그인해두세요 · 인스타·샤오홍슈가 <b>안 받아질 때</b>도</span>
+        <button id="cookieBtn" class="mini-btn" title="쓰레드·인스타그램·샤오홍슈는 여기서 한 번씩 로그인해두세요. 로그인해야 사진이 빠짐없이, 비공개 글까지 받아집니다">🔑 로그인</button>
+        <span class="hint-inline" id="siteHint">← <b>쓰레드·인스타·샤오홍슈</b>는 여기를 참고해서 <b>먼저 세팅</b>해주세요</span>
       </div>
     </section>
 
@@ -127,59 +127,113 @@
         <button id="cookieCloseBtn" class="icon-btn">✕</button>
       </div>
 
-      <div class="pg-note" style="background:rgba(232,163,61,.12);border-color:rgba(232,163,61,.35);">
-        🧵 <b>스레드는 아래 [🧵 스레드 로그인] 을 한 번 눌러두세요.</b><br />
-        로그인하지 않으면 스레드가 글 내용을 가려서, 겉보기엔 받아져도
-        <b>사진 일부가 빠진 채</b> 저장됩니다.
-        (실제 확인: 영상 1 + 사진 4 짜리 글이 영상 1 + 사진 2 로만 받아졌습니다)<br /><br />
-        <b>유튜브·인스타그램·틱톡은 그대로 잘 받아집니다.</b> 아래는 <b>이럴 때만</b> 쓰세요 —<br />
-        · 인스타그램·샤오홍슈에서 <b>“로그인이 필요합니다”</b> 라며 안 받아질 때<br />
-        · <b>비공개 계정</b>이나 <b>팔로워만 보는 게시물</b>을 받아야 할 때
-      </div>
-      <p class="pg-hint">
-        한 번만 연결해두면 그다음부터는 자동으로 됩니다.
+      <p class="pg-lead">
+        <b>쓰레드 · 인스타그램 · 샤오홍슈</b>는 여기를 참고해서 <b>먼저 세팅해주세요.</b><br />
+        <span class="pg-hint">
+          아래 <b>[로그인]</b> 을 한 번씩 눌러두시면 끝납니다 — 다음부터는 자동입니다.
+          유튜브·틱톡은 로그인 없이도 잘 받아집니다.
+        </span>
       </p>
+
+      <!-- ── 사이트별 로그인 — 각 줄에서 바로 끝난다 ── -->
+      <div class="site-list">
+        <div class="site-row" data-site="threads">
+          <span class="site-ico">🧵</span>
+          <div class="site-txt">
+            <b>쓰레드 (Threads)</b>
+            <span class="pg-hint">로그인 안 하면 <b>사진 일부가 빠진 채</b> 받아집니다</span>
+          </div>
+          <span class="chip site-state">확인 중…</span>
+          <button class="primary-btn site-login">로그인</button>
+        </div>
+
+        <div class="site-row" data-site="instagram">
+          <span class="site-ico">📸</span>
+          <div class="site-txt">
+            <b>인스타그램</b>
+            <span class="pg-hint">비공개 계정·릴스가 “로그인이 필요합니다” 로 막힐 때 필요</span>
+          </div>
+          <span class="chip site-state">확인 중…</span>
+          <button class="primary-btn site-login">로그인</button>
+        </div>
+
+        <div class="site-row" data-site="xhs">
+          <span class="site-ico">📕</span>
+          <div class="site-txt">
+            <b>샤오홍슈 (小红书)</b>
+            <span class="pg-hint">로그인해야 영상이 열리는 글이 많습니다</span>
+          </div>
+          <span class="chip site-state">확인 중…</span>
+          <button class="primary-btn site-login">로그인</button>
+        </div>
+      </div>
+
+      <p class="pg-hint">
+        누르면 그 사이트의 로그인 창이 하나 열립니다. 로그인만 하시면
+        창은 <b>저절로 닫히고</b> 초록색 <b>✅ 로그인됨</b> 으로 바뀝니다.
+        (쓰레드와 인스타그램은 같은 계정이라 한쪽만 하셔도 둘 다 됩니다)
+      </p>
+
+      <div id="threadsDoneMsg" class="pg-done hidden">
+        ✅ <b>세팅 완료!</b> 이제 그 사이트의 사진·영상이 빠짐없이 받아집니다.
+      </div>
+
+      <!-- ── 그래도 안 될 때만 펼쳐 보는 곳 ── -->
+      <details id="cookieAdvanced" class="pg-fold">
+        <summary class="step-head">
+          <span class="step-num soft">＋</span>
+          <b>그래도 안 받아질 때 (고급)</b>
+          <span style="flex:1"></span>
+          <span id="cookieStepState" class="chip">안 함</span>
+          <span class="fold-arrow">▾</span>
+        </summary>
+
+        <div class="pg-fold-body">
+          <p class="pg-hint">
+            위 <b>[로그인]</b> 으로 대부분 해결됩니다. 그래도 안 될 때만
+            아래 방법으로 크롬에 로그인된 쿠키를 직접 등록해 보세요.
+          </p>
+
+          <div class="pg-step">
+            <b>방법 1. 쿠키 파일 등록 <span class="pg-badge">권장 · 가장 확실</span></b>
+            <ol>
+              <li>
+                크롬에 확장
+                <a class="pg-link" target="_blank" rel="noopener"
+                   href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc?hl=ko"
+                ><b>“Get cookies.txt LOCALLY”</b> 설치하러 가기 ↗</a>
+              </li>
+              <li>인스타그램 등에 <b>로그인한 상태</b>로 그 사이트를 엽니다.</li>
+              <li>확장 아이콘 클릭 → <b>Export</b> → <code>cookies.txt</code> 저장</li>
+              <li>아래 버튼으로 그 파일을 고릅니다.</li>
+            </ol>
+            <button id="cookiePickBtn" class="primary-btn btn-block">📂 cookies.txt 파일 고르기</button>
+            <div id="cookieDoneMsg" class="pg-done hidden">
+              ✅ <b>4단계까지 모두 끝났습니다!</b> 쿠키 파일이 등록되어, 이제 로그인해야 보이는 영상도 받아집니다.<br />
+              이 창은 닫으셔도 됩니다 — 다음부터는 아무것도 안 하셔도 자동으로 적용됩니다.
+            </div>
+          </div>
+
+          <div class="pg-step">
+            <b>방법 2. 브라우저에서 바로 가져오기 <span class="pg-badge warn">간편하지만 실패할 수 있음</span></b>
+            <p class="pg-hint" style="margin:6px 0;">
+              최신 크롬은 보안이 강화돼 실패할 수 있습니다. 안 되면 방법 1을 쓰세요.<br />
+              <b>브라우저를 완전히 종료한 뒤</b> 눌러야 잘 됩니다.
+            </p>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="mini-btn cookie-browser" data-b="chrome">Chrome</button>
+              <button class="mini-btn cookie-browser" data-b="edge">Edge</button>
+              <button class="mini-btn cookie-browser" data-b="whale">Whale</button>
+              <button class="mini-btn cookie-browser" data-b="firefox">Firefox</button>
+            </div>
+          </div>
+        </div>
+      </details>
 
       <div class="pg-note">
         🔒 <b>비밀번호는 받지 않습니다.</b> 로그인 상태를 나타내는 쿠키만 사용하며,
         이 파일은 <b>내 컴퓨터 안에만</b> 저장되고 어디로도 전송되지 않습니다.<br />
-        👤 되도록 <b>부계정</b>으로 로그인한 쿠키를 쓰시길 권합니다.
-      </div>
-
-      <div class="pg-step">
-        <b>🧵 스레드(Threads) 는 여기서 바로 로그인하세요 <span class="pg-badge">한 번만</span></b>
-        <p class="pg-hint" style="margin:6px 0;">
-          로그인하지 않으면 스레드가 글 내용을 가려서 <b>사진 일부가 빠진 채</b> 받아집니다.<br />
-          아래를 누르면 창이 하나 열립니다. 인스타그램 계정으로 로그인만 하시면 창은 저절로 닫히고,
-          <b>다음부터는 아무것도 안 하셔도 됩니다.</b>
-        </p>
-        <button id="threadsLoginBtn" class="primary-btn">🧵 스레드 로그인</button>
-        <span id="threadsLoginState" class="pg-hint" style="margin-left:8px;">확인 중…</span>
-      </div>
-
-      <div class="pg-step">
-        <b>방법 1. 쿠키 파일 등록 <span class="pg-badge">권장 · 가장 확실</span></b>
-        <ol>
-          <li>크롬에 확장 <b>“Get cookies.txt LOCALLY”</b> 를 설치합니다.</li>
-          <li>인스타그램 등에 <b>로그인한 상태</b>로 그 사이트를 엽니다.</li>
-          <li>확장 아이콘 클릭 → <b>Export</b> → <code>cookies.txt</code> 저장</li>
-          <li>아래 버튼으로 그 파일을 고릅니다.</li>
-        </ol>
-        <button id="cookiePickBtn" class="primary-btn">📂 cookies.txt 파일 고르기</button>
-      </div>
-
-      <div class="pg-step">
-        <b>방법 2. 브라우저에서 바로 가져오기 <span class="pg-badge warn">간편하지만 실패할 수 있음</span></b>
-        <p class="pg-hint" style="margin:6px 0;">
-          최신 크롬은 보안이 강화돼 실패할 수 있습니다. 안 되면 방법 1을 쓰세요.<br />
-          <b>브라우저를 완전히 종료한 뒤</b> 눌러야 잘 됩니다.
-        </p>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="mini-btn cookie-browser" data-b="chrome">Chrome</button>
-          <button class="mini-btn cookie-browser" data-b="edge">Edge</button>
-          <button class="mini-btn cookie-browser" data-b="whale">Whale</button>
-          <button class="mini-btn cookie-browser" data-b="firefox">Firefox</button>
-        </div>
+        👤 되도록 <b>부계정</b>으로 로그인하시길 권합니다.
       </div>
 
       <div class="pg-modal-foot">

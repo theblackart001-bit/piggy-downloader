@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 🧵 Threads(스레드) 리졸버.
+ * 🧵 Threads(쓰레드) 리졸버.
  *
  * ■ 왜 따로 필요한가
  *   · yt-dlp 에 Threads 추출기가 아예 없다("Unsupported URL").
@@ -26,17 +26,17 @@ const { BrowserWindow, session } = require('electron');
 const THREADS_RE = /(^|\/\/)(www\.)?threads\.(net|com)\//i;
 
 /**
- * 스레드 전용 세션 이름.
+ * 쓰레드 전용 세션 이름.
  * ⚠️ 'persist:' 를 반드시 붙인다 — 없으면 메모리 세션이라 앱을 끄는 순간 로그인이 날아간다.
  *    (사용자가 매번 다시 로그인하게 된다)
  */
 const PARTITION = 'persist:piggy-threads';
 const getSession = () => session.fromPartition(PARTITION);
 
-/** 스레드/인스타는 브라우저를 가려 받는다 — 로그인 창과 조회 창 모두 같은 크롬 UA 로 통일한다. */
+/** 쓰레드/인스타는 브라우저를 가려 받는다 — 로그인 창과 조회 창 모두 같은 크롬 UA 로 통일한다. */
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-/** 로그인 상태인가 — 스레드/인스타 세션 쿠키가 있으면 로그인으로 본다. */
+/** 로그인 상태인가 — 쓰레드/인스타 세션 쿠키가 있으면 로그인으로 본다. */
 async function isLoggedIn() {
   try {
     const ses = getSession();
@@ -67,7 +67,7 @@ function openLogin() {
     const win = new BrowserWindow({
       width: 520,
       height: 760,
-      title: '스레드 로그인',
+      title: '쓰레드 로그인',
       autoHideMenuBar: true,
       webPreferences: { session: getSession(), javascript: true, images: true },
     });
@@ -120,11 +120,11 @@ const isPhotoUrl = (u) =>
 
 /**
  * 후보 영상 주소 중 **실제 용량이 가장 큰 것**을 고른다(= 최고화질).
- * 스레드는 같은 영상을 여러 화질로 흘려보내고, 먼저 잡힌 게 최고화질이 아닐 수 있다.
+ * 쓰레드는 같은 영상을 여러 화질로 흘려보내고, 먼저 잡힌 게 최고화질이 아닐 수 있다.
  * 용량 확인에 실패한 주소는 0 으로 두고 넘어간다(전부 실패하면 첫 번째를 쓴다).
  */
 // 진짜 영상으로 인정할 최소 크기.
-// ⚠️ 스레드는 프로필 아바타를 mp4 컨테이너로 내보내기도 한다(실측: 150x150 mjpeg, 0.04초, 7.5KB).
+// ⚠️ 쓰레드는 프로필 아바타를 mp4 컨테이너로 내보내기도 한다(실측: 150x150 mjpeg, 0.04초, 7.5KB).
 //    그걸 영상으로 받아버리면 "받았는데 아무것도 없는 파일"이 나온다.
 const MIN_VIDEO_BYTES = 200 * 1024; // 200KB
 
@@ -217,9 +217,19 @@ async function extractFromPageData(win, code) {
   } catch (_) { return null; }
   if (!raw) return null;
 
-  const idx = raw.indexOf(`"code":"${code}"`);
-  if (idx < 0) return null;
-  const post = enclosingObject(raw, idx);
+  // ⚠️ 같은 code 가 페이지 안에 여러 번 박힌다(요약본 + 본문). 첫 번째만 보면
+  //    미디어가 덜 담긴 쪽을 집을 수 있다 → 전부 훑어 **가장 많이 담긴 것**을 고른다.
+  const needle = `"code":"${code}"`;
+  let post = null;
+  let bestCount = -1;
+  for (let at = raw.indexOf(needle); at >= 0; at = raw.indexOf(needle, at + 1)) {
+    const cand = enclosingObject(raw, at);
+    if (!cand) continue;
+    const n = Array.isArray(cand.carousel_media)
+      ? cand.carousel_media.length
+      : (cand.video_versions || cand.image_versions2) ? 1 : 0;
+    if (n > bestCount) { bestCount = n; post = cand; }
+  }
   if (!post) return null;
 
   // 캐러셀이면 항목들, 아니면 글 자체가 미디어 하나다.
@@ -275,7 +285,7 @@ async function applyCookies(ses, cookiesFile) {
 async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress = null } = {}) {
   const code = postCode(url) || 'threads';
   const say = (text) => { if (onProgress) onProgress({ type: 'stage', stage: 'resolving', text }); };
-  say('🧵 스레드 글 여는 중...');
+  say('🧵 쓰레드 글 여는 중...');
 
   // 앱 전용 세션(사용자 브라우저와 분리). 앱 안에서 로그인해 둔 쿠키가 여기 남아 있다.
   const ses = getSession();
@@ -326,13 +336,21 @@ async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress 
     //   화면을 긁는 것보다 정확하다 — 영상은 영상으로, 이 글 것만, 순서 그대로 나온다.
     //   렌더 직후엔 아직 안 박혀 있을 수 있어 잠깐 기다리며 몇 번 시도한다.
     say('🧵 미디어 찾는 중...');
+    // 처음 잡힌 결과가 전부가 아닐 수 있다(페이지가 뒤늦게 나머지를 채운다).
+    // → 더 많이 담긴 게 나오면 갈아끼우고, 두 번 연속 그대로면 끝난 걸로 본다.
+    let stable = 0;
     for (let i = 0; i < 8; i++) {
-      pageData = await extractFromPageData(win, code);
-      if (pageData) break;
+      const got = await extractFromPageData(win, code);
+      if (got && (!pageData || got.media.length > pageData.media.length)) {
+        pageData = got;
+        stable = 0;
+      } else if (pageData && ++stable >= 2) {
+        break;
+      }
       await new Promise((r) => setTimeout(r, 700));
     }
     if (pageData) {
-      // ★ 로그인 벽 감지 — 로그인 없이 열면 스레드가 본문을 "이 콘텐츠를 이용할 수 없습니다"로 가린다(실측).
+      // ★ 로그인 벽 감지 — 로그인 없이 열면 쓰레드가 본문을 "이 콘텐츠를 이용할 수 없습니다"로 가린다(실측).
       //   그래도 페이지에 데이터 조각은 남아 있어 '일부만' 받아진다(실측: 5개짜리 글이 3개만).
       //   조용히 일부만 주면 그게 전부인 줄 알게 된다 → 반드시 알려야 한다.
       //   ⚠️ 판정은 화면이 다 그려진 **이 시점**에 해야 한다. 로드 직후에 물으면 아직 안 붙어 있다.
@@ -346,7 +364,7 @@ async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress 
       const nv = pageData.media.filter((m) => m.kind === 'video').length;
       const np = pageData.media.length - nv;
       say(`🧵 확인: 영상 ${nv}개 · 사진 ${np}개`);
-      if (restricted) say('🧵 ⚠️ 로그인이 없어 이 글의 일부만 보입니다 — [🧵 스레드 로그인] 후 다시 받아주세요');
+      if (restricted) say('🧵 ⚠️ 로그인이 없어 이 글의 일부만 보입니다 — [🧵 쓰레드 로그인] 후 다시 받아주세요');
       return {
         restricted,
         directUrl: pageData.media[0].url,
@@ -437,10 +455,10 @@ async function resolve(url, { cookiesFile = null, timeoutMs = 25000, onProgress 
   const vids = [...videoUrls];
   const pics = [...photoUrls];
   if (!vids.length && !pics.length) {
-    throw new Error('이 스레드 글에서 영상·사진을 찾지 못했습니다(글만 있는 게시물이거나 비공개일 수 있습니다)');
+    throw new Error('이 쓰레드 글에서 영상·사진을 찾지 못했습니다(글만 있는 게시물이거나 비공개일 수 있습니다)');
   }
 
-  // ★ 스레드는 같은 영상을 여러 화질로 내보낸다. 먼저 잡힌 게 최고화질이라는 보장이 없어
+  // ★ 쓰레드는 같은 영상을 여러 화질로 내보낸다. 먼저 잡힌 게 최고화질이라는 보장이 없어
   //   (실측: 첫 번째를 쓰면 7KB 짜리 조각이 받아졌다) 후보들의 실제 용량을 확인해 가장 큰 것을 고른다.
   const best = vids.length ? await pickLargest(vids, say) : null;
 
@@ -487,7 +505,7 @@ function makeUniqueDir(parent, name) {
 }
 
 /**
- * 스레드 글의 **모든 미디어**(영상 + 사진)를 저장한다.
+ * 쓰레드 글의 **모든 미디어**(영상 + 사진)를 저장한다.
  * 유튜브처럼 "주소만 복사하면 알아서" 되도록, 한 글에 여러 장이 있어도 전부 받는다.
  *
  * ■ 저장 형태 (사장님 지시 2026-07-27)

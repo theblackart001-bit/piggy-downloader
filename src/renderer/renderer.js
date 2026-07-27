@@ -59,6 +59,7 @@ const els = {
   cookiePickBtn: $('#cookiePickBtn'),
   cookieClearBtn: $('#cookieClearBtn'),
   cookieState: $('#cookieState'),
+  cookieDoneMsg: $('#cookieDoneMsg'),
 };
 
 /* ============ ✂️ 구간 · 📜 기록 · 🔑 쿠키 ============ */
@@ -118,28 +119,70 @@ function bindExtras() {
     // 버튼 라벨은 연결 여부만 바꾼다. 옆의 안내문(.hint-inline)은 건드리지 않는다.
     const connected = c.mode && c.mode !== 'none';
     if (els.cookieBtn) els.cookieBtn.textContent = connected ? '🔑 연결됨' : '🔑 로그인';
+    // 방법 1 을 4단계까지 끝냈을 때(= 쿠키 파일 등록)만 완료 안내를 띄운다.
+    els.cookieDoneMsg?.classList.toggle('hidden', c.mode !== 'file');
+    // 2단계 칩 + 이미 해둔 사람은 접힌 걸 펼쳐서 상태를 바로 보게 한다(닫는 건 사용자 몫).
+    const chip = $('#cookieStepState');
+    if (chip) {
+      chip.textContent = connected ? '✅ 연결됨' : '안 함';
+      chip.classList.toggle('on', !!connected);
+    }
+    if (connected) { const fold = $('#cookieAdvanced'); if (fold) fold.open = true; }
     // 연결한 뒤에는 '안 받아질 때만' 안내가 더 이상 필요 없다 → 상태 문구로 바꾼다.
     const hint = document.querySelector('.hint-inline');
-    if (hint) hint.innerHTML = connected
-      ? '← 로그인 연결됨 · 이제 <b>비공개 게시물</b>도 받아집니다'
-      : '← 인스타·샤오홍슈가 <b>안 받아질 때만</b> 눌러주세요';
+    if (hint) hint.innerHTML = '← <b>쓰레드·인스타·샤오홍슈</b>는 여기를 참고해서 <b>먼저 세팅</b>해주세요';
   };
-  // 🧵 스레드 로그인 — 앱 안에서 직접 로그인시킨다(크롬 쿠키는 최신 크롬에서 못 읽는다).
-  const threadsLoginBtn = $('#threadsLoginBtn');
-  const threadsLoginState = $('#threadsLoginState');
+  // 🔑 사이트별 로그인 — 확장·쿠키파일 없이 앱 안에서 바로 로그인시킨다
+  //    (크롬 쿠키를 긁어오는 방법은 크롬 127+ 의 App-Bound Encryption 때문에 불가능하다)
+  const SITE_LABEL = { threads: '🧵 쓰레드', instagram: '📸 인스타그램', xhs: '📕 샤오홍슈' };
+  const siteRows = [...document.querySelectorAll('.site-row')];
+  const threadsDoneMsg = $('#threadsDoneMsg');
+  const setRow = (row, text, kind) => {
+    const chip = row.querySelector('.site-state');
+    const btn = row.querySelector('.site-login');
+    chip.textContent = text;
+    chip.classList.toggle('on', kind === 'on');
+    chip.classList.toggle('wait', kind === 'wait');
+    row.classList.toggle('done', kind === 'on');
+    if (btn) btn.textContent = kind === 'on' ? '다시 로그인' : '로그인';
+  };
   const showThreadsState = async () => {
-    if (!threadsLoginState) return;
-    const on = await window.piggy.threadsLoginStatus();
-    threadsLoginState.textContent = on ? '✅ 로그인됨' : '로그인 안 됨';
+    if (!siteRows.length) return;
+    const st = await window.piggy.siteStatus();
+    for (const row of siteRows) {
+      const on = !!st[row.dataset.site];
+      setRow(row, on ? '✅ 로그인됨' : '아직 안 함', on ? 'on' : null);
+    }
+    // 하나라도 해뒀으면 '다 됐다'는 신호를 보여준다.
+    const any = Object.values(st).some(Boolean);
+    threadsDoneMsg?.classList.toggle('hidden', !any);
+    updateSiteHint(any);
   };
-  threadsLoginBtn?.addEventListener('click', async () => {
-    threadsLoginState.textContent = '로그인 창에서 진행해 주세요…';
-    const r = await window.piggy.threadsLogin();
-    await showThreadsState();
-    setStatus(r?.loggedIn
-      ? '🧵 스레드 로그인 완료 — 이제 글의 사진·영상이 전부 받아집니다'
-      : '🧵 로그인이 확인되지 않았습니다. 다시 시도해 주세요');
-  });
+
+  // 상단 안내문 — 로그인 전에는 눈에 띄게, 해두면 조용하게.
+  //  (로그인 없이 받으면 쓰레드가 글을 가려서 사진이 일부만 내려온다)
+  const updateSiteHint = (any) => {
+    const hint = $('#siteHint');
+    if (!hint) return;
+    hint.classList.toggle('ok', !!any);
+    hint.innerHTML = any
+      ? '✅ <b>로그인 완료</b> — 사진이 빠짐없이 받아집니다'
+      : '← <b>쓰레드·인스타·샤오홍슈</b>는 <b>먼저 로그인</b>하세요 (안 하면 일부만 받아져요)';
+  };
+  for (const row of siteRows) {
+    row.querySelector('.site-login')?.addEventListener('click', async () => {
+      const key = row.dataset.site;
+      setRow(row, '로그인 창에서 진행 중…', 'wait');
+      const r = await window.piggy.siteLogin(key);
+      await showThreadsState();
+      setStatus(r?.loggedIn
+        ? `${SITE_LABEL[key]} 로그인 완료 — 이제 빠짐없이 받아집니다`
+        : `${SITE_LABEL[key]} 로그인이 확인되지 않았습니다. 다시 시도해 주세요`);
+    });
+  }
+
+  // 창을 열기 전에도 안내문이 실제 상태를 말해야 한다(모달을 열어야 알 수 있으면 소용없다)
+  showThreadsState();
 
   els.cookieBtn?.addEventListener('click', () => { showCookieState(); showThreadsState(); els.cookieModal.classList.remove('hidden'); });
   els.cookieCloseBtn?.addEventListener('click', () => els.cookieModal.classList.add('hidden'));
@@ -510,7 +553,14 @@ function subscribeProgress() {
       }
       case 'done':
         setItemState(data.id, 'done');
-        el.querySelector('.q-stage').textContent = '✅ 완료';
+        // 일부만 받아진 경우엔 '완료'로 덮지 않는다 — 그러면 다 받은 줄 안다.
+        if (data.warning) {
+          el.querySelector('.q-stage').textContent = `⚠️ ${data.warning}`;
+          el.querySelector('.q-stage').classList.add('warn');
+          setStatus(`⚠️ ${data.warning}`);
+        } else {
+          el.querySelector('.q-stage').textContent = '✅ 완료';
+        }
         el.querySelector('.q-bar').style.width = '100%';
         el.querySelector('.q-percent').textContent = '100%';
         el.querySelector('.q-speed').textContent = '';

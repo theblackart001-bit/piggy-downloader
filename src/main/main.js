@@ -11,6 +11,7 @@ const updater = require('./updater');
 const ytdlpUpdater = require('./ytdlp-updater');
 const history = require('./history');
 const threads = require('./threads');
+const sitelogin = require('./sitelogin');
 
 const IS_DEV = process.argv.includes('--dev');
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
@@ -216,9 +217,21 @@ function cookiesFromSettings() {
   return null;
 }
 
+/**
+ * 이 주소에 쓸 쿠키를 고른다.
+ * ① 사용자가 직접 등록한 것(cookies.txt·브라우저)이 있으면 그 뜻을 존중해 먼저 쓴다.
+ * ② 없으면 앱 안에서 로그인해 둔 세션(🔑 로그인 창)의 쿠키를 파일로 내보내 쓴다.
+ *    — 로그인한 사이트의 주소일 때만 붙는다(sitelogin.cookiesForUrl 참고).
+ */
+async function cookiesForUrl(url) {
+  const explicit = cookiesFromSettings();
+  if (explicit) return explicit;
+  try { return await sitelogin.cookiesForUrl(url); } catch (_) { return null; }
+}
+
 ipcMain.handle('info:get', async (_e, url) => {
   try {
-    const info = await engine.getInfo(url, { cookies: cookiesFromSettings() });
+    const info = await engine.getInfo(url, { cookies: await cookiesForUrl(url) });
     return { ok: true, info: pickInfo(info) };
   } catch (err) {
     return { ok: false, error: String(err.message || err) };
@@ -241,7 +254,7 @@ ipcMain.handle('download:start', async (e, job) => {
     }
     outputDir = r.filePaths[0];
   }
-  job = { ...job, outputDir, cookies: cookiesFromSettings() };
+  job = { ...job, outputDir, cookies: await cookiesForUrl(job.url) };
   const send = (payload) =>
     e.sender.send('download:progress', { id: job.id, ...payload });
   try {
@@ -265,7 +278,7 @@ ipcMain.handle('download:start', async (e, job) => {
       try { size = res.file ? fs.statSync(res.file).size : 0; } catch (_) { /* 무시 */ }
       history.add({ url: job.url, title: job.title, file: res.file, mode: job.mode, thumbnail: job.thumbnail, size });
     } catch (_) { /* 기록 실패가 다운로드를 망치면 안 된다 */ }
-    send({ type: 'done', outputDir: job.outputDir, file: res.file });
+    send({ type: 'done', outputDir: job.outputDir, file: res.file, warning: res.warning || null });
     return { ok: true };
   } catch (err) {
     send({ type: 'error', error: String(err.message || err) });
@@ -306,11 +319,16 @@ ipcMain.handle('cookies:useBrowser', (_e, browser) => {
   return { ok: true };
 });
 
-// 🧵 스레드 로그인 — 앱 안에서 한 번만 로그인하면 이후 스레드 글은 전부 받아진다.
+// 🧵 쓰레드 로그인 — 앱 안에서 한 번만 로그인하면 이후 쓰레드 글은 전부 받아진다.
 //   (크롬 쿠키를 긁어오는 방법은 크롬 127+ 의 App-Bound Encryption 때문에 불가능하다)
 ipcMain.handle('threads:login', () => threads.openLogin());
 ipcMain.handle('threads:loginStatus', () => threads.isLoggedIn());
 ipcMain.handle('threads:logout', () => threads.logout());
+
+// 🔑 사이트별 로그인(쓰레드·인스타그램·샤오홍슈) — 확장·쿠키파일 없이 앱 안에서 끝낸다.
+ipcMain.handle('site:status', () => sitelogin.statusAll());
+ipcMain.handle('site:login', (_e, key) => sitelogin.openLogin(key));
+ipcMain.handle('site:logout', (_e, key) => sitelogin.logout(key));
 
 ipcMain.handle('download:cancel', (_e, id) => engine.cancel(id));
 
