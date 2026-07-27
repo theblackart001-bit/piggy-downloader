@@ -167,7 +167,7 @@ class YtDlpEngine {
     if (!hasCookies && resolvers.shouldResolve(job.url)) {
       if (onProgress) onProgress({ type: 'stage', stage: 'resolving', text: '🔗 인스타그램 링크 분석 중...' });
       const meta = await resolvers.resolve(job.url);
-      job = { ...job, url: meta.directUrl, _direct: true, _igShortcode: meta.shortcode };
+      job = { ...job, url: meta.directUrl, _direct: true, _igShortcode: meta.shortcode, _igTitle: meta.caption || job.title };
     }
     return this._spawnDownload(job, onProgress);
   }
@@ -309,7 +309,8 @@ class YtDlpEngine {
     const nameBase = direct && job._threadsCode
       ? (safe(job._threadsTitle) || `Threads ${job._threadsCode}`)
       : direct && job._igShortcode
-        ? `Instagram ${job._igShortcode}`
+        // 쓰레드와 같은 규칙 — 글 내용을 파일명으로. 캡션이 없을 때만 코드로 떨어진다.
+        ? (safe(job._igTitle) || `Instagram ${job._igShortcode}`)
         : '%(title).150B';
     const outTemplate = path.join(job.outputDir, `${nameBase}.%(ext)s`);
     const args = [

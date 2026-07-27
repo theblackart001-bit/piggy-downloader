@@ -46,8 +46,12 @@ async function resolve(url) {
       const media = r && r.success && r.data && Array.isArray(r.data.media) ? r.data.media : [];
       const picked = media.find((m) => m && m.type === 'video' && m.url) || media.find((m) => m && m.url);
       if (picked && picked.url) {
+        // 글 내용(캡션)을 파일명으로 쓴다 — 'Instagram DM3x...' 는 나중에 뭐가 뭔지 모른다.
+        // snapsave 응답의 키 이름이 버전마다 달라서 있을 만한 곳을 순서대로 본다.
+        const cap = r.data.description || r.data.title || r.data.caption || '';
         return {
           shortcode: instagramShortcode(url),
+          caption: String(cap).replace(/\s+/g, ' ').trim(),
           directUrl: picked.url,
           thumbnail: picked.thumbnail || (media.find((m) => m && m.thumbnail) || {}).thumbnail || null,
           type: picked.type || 'video',
@@ -74,9 +78,11 @@ async function resolve(url) {
 async function getInfoLike(url) {
   const meta = await resolve(url);
   const sc = meta.shortcode || 'instagram';
+  // 캡션이 있으면 그게 제목이다(미리보기·파일명 모두 여기서 나온다).
+  const cap = (meta.caption || '').slice(0, 120);
   return {
     id: sc,
-    title: `Instagram ${sc}`,
+    title: cap || `Instagram ${sc}`,
     uploader: 'Instagram',
     duration: null,
     duration_string: '',

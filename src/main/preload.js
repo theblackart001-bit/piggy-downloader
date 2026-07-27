@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('piggy', {
   getInfo: (url) => ipcRenderer.invoke('info:get', url),
   startDownload: (job) => ipcRenderer.invoke('download:start', job),
   cancelDownload: (id) => ipcRenderer.invoke('download:cancel', id),
+  cancelAllDownloads: () => ipcRenderer.invoke('download:cancelAll'),
   onProgress: (cb) => {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on('download:progress', handler);

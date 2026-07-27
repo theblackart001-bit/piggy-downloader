@@ -48,7 +48,7 @@
         </label>
 
         <label class="check" title="영상 주소를 복사하면 불러오기·추가 없이 곧바로 다운로드가 시작됩니다">
-          <input type="checkbox" id="autoDlCheck" checked /> ⚡ 복사하면 바로 받기
+          <input type="checkbox" id="autoDlCheck" /> ⚡ 복사하면 바로 받기
         </label>
 
         <label class="check" title="켜면 받을 때마다 저장할 폴더를 물어봅니다. 꺼두면 항상 다운로드 폴더에 저장됩니다">
@@ -93,6 +93,7 @@
       <div class="queue-head">
         <h2>다운로드 <span id="queueCount" class="count">0</span></h2>
         <div class="queue-head-actions">
+          <button id="stopAllBtn" class="stop-all hidden">⏹ 전체 중단</button>
           <button id="clearDoneBtn" class="text-btn">완료 항목 비우기</button>
         </div>
       </div>
@@ -174,9 +175,9 @@
       <p class="pg-hint">
         누르면 그 사이트의 로그인 창이 하나 열립니다. 로그인만 하시면
         창은 <b>저절로 닫히고</b> 초록색 <b>✅ 로그인됨</b> 으로 바뀝니다.
-        <b>쓰레드를 받으실 거면 쓰레드 줄에서 로그인해 주세요</b> —
-        인스타그램만 해두면 쓰레드는 여전히 사진이 일부만 받아집니다.
-        (쓰레드에서 로그인하면 인스타 계정으로 이뤄져서 인스타까지 함께 됩니다)
+        <b>쓰레드와 인스타그램은 로그인이 따로입니다</b> —
+        계정이 다를 수 있어 세션을 나눠뒀습니다. 둘 다 쓰시면 각각 한 번씩 눌러주세요.
+        (쓰레드는 인스타 계정으로 로그인하지만, 저장은 쓰레드 쪽에 따로 됩니다)
       </p>
 
       <div id="threadsDoneMsg" class="pg-done hidden">

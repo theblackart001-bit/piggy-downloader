@@ -331,6 +331,9 @@ ipcMain.handle('site:login', (_e, key) => sitelogin.openLogin(key));
 ipcMain.handle('site:logout', (_e, key) => sitelogin.logout(key));
 
 ipcMain.handle('download:cancel', (_e, id) => engine.cancel(id));
+// ⚠️ 재생목록은 한 번에 수십 개가 큐에 쌓인다. 하나씩 ✕ 를 누르는 건 멈추는 방법이 아니다.
+//    받는 중인 것도, 대기 중인 것도 한 번에 끊을 길이 반드시 있어야 한다.
+ipcMain.handle('download:cancelAll', () => { engine.cancelAll(); return { ok: true }; });
 
 ipcMain.handle('update:install', () => updater.quitAndInstall());
 

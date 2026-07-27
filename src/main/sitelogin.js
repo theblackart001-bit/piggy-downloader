@@ -44,16 +44,34 @@ const SITES = {
   threads: {
     label: '쓰레드',
     partition: 'persist:piggy-threads',
+    // ⚠️ /login 으로 직행하면 폼이 잠깐 떴다가 쓰레드가 피드로 되돌려 버린다(실측).
+    //    잘 되는 '쓰레드 쇼핑 자동화' 앱은 **루트를 열고 사용자가 [로그인] 을 누르는** 방식이다.
+    //    그 검증된 흐름을 그대로 따른다 — 안내 막대로 어디를 누를지 알려준다.
+    // ⚠️ 잘 되는 두 앱(쓰레드 쇼핑 자동화 · SBreads)은 모두 **threads.net** 을 쓴다.
+    //    .com 으로 열면 로그인 도중 404('페이지는 길을 잃었습니다')로 끊겨
+    //    마지막 sessionid 발급 직전에 멈춘다(실측: ds_user_id 만 심기고 끝났다).
+    // 쓰레드 전용 로그인 화면. 인스타 계정을 쓰긴 하지만 **쓰레드 쪽 로그인**이라
+    // 여기서 해야 threads.com 에 ds_user_id 가 심긴다.
     loginUrl: 'https://www.threads.com/login',
-    fallbackUrl: 'https://www.instagram.com/accounts/login/',
-    checkUrls: ['https://www.threads.com'],   // 자기 도메인만 — 위 ⚠️⚠️ 참고
-    cookieNames: ['sessionid'],
+    fallbackUrl: 'https://www.threads.net/login',
+    formUrl: 'https://www.threads.com/login',
+    // 쓰레드는 threads.net → threads.com 으로 옮겨왔다. 쿠키가 어느 쪽에 떨어져도 잡는다.
+    checkUrls: ['https://www.threads.com', 'https://www.threads.net'],
+    // ⚠️ 쓰레드는 threads.com 에 sessionid 를 두지 않는다. 실측한 쿠키:
+    //      로그인 전 : csrftoken, ig_did, mid
+    //      로그인 후 : csrftoken, ig_did, mid, **ds_user_id**
+    //    (sessionid 는 instagram.com 쪽에만 생긴다)
+    //    그래서 sessionid 만 찾으면 쓰레드는 영원히 '아직 안 함' 이 된다.
+    //    ds_user_id 는 인증을 거쳐야만 생기므로 로그인 표식으로 안전하다.
+    cookieNames: ['sessionid', 'ds_user_id'],
     urlRe: /(^|\/\/)(www\.)?threads\.(net|com)\//i,
     win: { width: 520, height: 780 },
   },
   instagram: {
     label: '인스타그램',
-    partition: 'persist:piggy-threads',
+    // ⚠️ 쓰레드와 **세션을 나눈다**. 두 계정을 따로 쓰는 사람이 있어서
+    //    한 세션을 공유하면 한쪽을 로그인할 때 다른 쪽 계정이 밀려난다.
+    partition: 'persist:piggy-instagram',
     loginUrl: 'https://www.instagram.com/accounts/login/',
     checkUrls: ['https://www.instagram.com'],  // 자기 도메인만 — 위 ⚠️⚠️ 참고
     cookieNames: ['sessionid'],
@@ -110,6 +128,37 @@ const MIN_VISIBLE_MS = 2000;
 const POLL_MS = 1200;
 
 /**
+ * 사이트당 로그인 창은 **하나만** 둔다.
+ * ⚠️ 누를 때마다 새 창을 띄우면, 앞서 열어둔 창이 위에 겹쳐 있을 수 있다.
+ *    사용자는 새로 뜬 로그인 화면 대신 **예전 창(피드)** 을 보고 "로그인이 안 된다" 고 여긴다.
+ */
+const openWindows = new Map();
+
+/** 로그인 화면이 아닌 곳(피드 등)에 떨어져도 스스로 빠져나올 수 있게 띄우는 안내 막대. */
+function bannerScript(loginUrl, label) {
+  return `(() => {
+    const ID = '__piggy_login_bar__';
+    if (document.getElementById(ID)) return;
+    const bar = document.createElement('div');
+    bar.id = ID;
+    bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483647;'
+      + 'background:#1f9bf0;color:#fff;font:600 13px/1.4 system-ui,sans-serif;'
+      + 'padding:9px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.25)';
+    const txt = document.createElement('span');
+    txt.textContent = '${label} 로그인 화면이 아닙니다 — 이 창 오른쪽 위의 [로그인] 을 누르거나, 오른쪽 버튼을 눌러주세요. 로그인을 마치면 창이 저절로 닫힙니다.';
+    txt.style.flex = '1';
+    const btn = document.createElement('button');
+    btn.textContent = '로그인 화면 열기';
+    btn.style.cssText = 'flex:none;border:0;border-radius:7px;padding:6px 12px;cursor:pointer;'
+      + 'background:#fff;color:#1257a0;font:700 12.5px system-ui,sans-serif';
+    btn.onclick = () => { location.href = ${JSON.stringify(loginUrl)}; };
+    bar.appendChild(txt); bar.appendChild(btn);
+    document.documentElement.appendChild(bar);
+    document.body && (document.body.style.paddingTop = '42px');
+  })();`;
+}
+
+/**
  * 로그인 창을 열고, 로그인이 확인되면 **저절로 닫아준다**.
  * (사용자가 "이제 창을 닫아도 되나?" 를 고민하지 않게 한다)
  *
@@ -125,7 +174,17 @@ function openLogin(key) {
 
   return (async () => {
     const relogin = await isLoggedIn(key);
-    if (relogin) await logout(key);   // 계정 바꾸기 — 지우고 새로 받는다
+    // ⚠️⚠️ 세션을 지우면 안 된다. 지우는 순간 쓰레드에게 **처음 보는 기기**가 되고,
+    //    그때마다 이메일 인증 코드를 요구한다(실측: 누를 때마다 코드 요구 → 인증 통과 →
+    //    또 지워짐 → 다음에 또 코드. 영원히 로그인이 안 끝난다).
+    //    잘 되는 '쓰레드 쇼핑 자동화'·SBreads 는 프로필을 **절대 지우지 않아서**
+    //    한 번 인증한 기기로 남고, 그래서 다시는 코드를 묻지 않는다. 그 방식을 따른다.
+    //    계정을 바꾸고 싶을 땐 [로그아웃] 버튼을 쓰면 된다 — 그건 사용자가 정할 일이다.
+
+    // 앞서 열어둔 같은 사이트 로그인 창이 있으면 먼저 없앤다(겹쳐 보이는 것을 막는다).
+    const prev = openWindows.get(key);
+    if (prev && !prev.isDestroyed()) { try { prev.destroy(); } catch (_) { /* 이미 닫힘 */ } }
+    openWindows.delete(key);
 
     return new Promise((resolve) => {
       const win = new BrowserWindow({
@@ -135,6 +194,7 @@ function openLogin(key) {
         autoHideMenuBar: true,
         webPreferences: { session: getSession(key), javascript: true, images: true },
       });
+      openWindows.set(key, win);
 
       const openedAt = Date.now();
       let done = false;
@@ -148,16 +208,43 @@ function openLogin(key) {
         // 로그인했으면 그 자리에서 쿠키 파일로 내보내 둔다(다음 다운로드가 바로 쓰도록).
         if (loggedIn) { try { await exportCookieFile(key); } catch (_) { /* 실패해도 세션은 살아 있다 */ } }
         try { if (!win.isDestroyed()) win.destroy(); } catch (_) { /* 이미 닫힘 */ }
+        if (openWindows.get(key) === win) openWindows.delete(key);
         resolve({ ok: true, loggedIn, site: key, relogin });
       };
 
       // 페이지가 뜬 뒤부터 감시한다. 로드 전에 돌리면 남아 있던 쿠키를 보고 바로 닫을 수 있다.
       win.webContents.once('did-finish-load', () => {
-        if (done) return;
+        if (done || timer) return;
         timer = setInterval(async () => {
-          if (done) return;
-          if (Date.now() - openedAt < MIN_VISIBLE_MS) return;   // 깜빡임 방지
-          if (await isLoggedIn(key)) finish();
+          if (done || win.isDestroyed()) return;
+          if (Date.now() - openedAt >= MIN_VISIBLE_MS && await isLoggedIn(key)) { finish(); return; }
+
+          // ⚠️ 한 번만 검사하면 못 잡는다. 쓰레드는 **로그인 폼을 먼저 보여준 뒤**
+          //    잠시 후 피드로 넘겨버린다(실측: 사용자 화면에 안내 막대가 아예 안 떴다
+          //    = 첫 검사 시점엔 폼이 있었다는 뜻). 그래서 매번 다시 확인한다.
+          try {
+            const state = await win.webContents.executeJavaScript(`({
+              form: document.querySelectorAll('input[type=password]').length > 0,
+              bar: !!document.getElementById('__piggy_login_bar__'),
+              lost: /길을 잃었습니다|Sorry, this page isn't available|페이지가 존재하지 않/i
+                      .test(document.body ? document.body.innerText : ''),
+            })`);
+            // ⚠️ 로그인 막바지에 404 로 튕기는 일이 있다(실측: 이메일 인증 코드까지 통과했는데
+            //    '이 페이지는 길을 잃었습니다' 가 뜨고 sessionid 발급 직전에 멈췄다).
+            //    그대로 두면 사용자는 다 해놓고 실패한다 → 홈으로 되돌려 세션을 마무리시킨다.
+            if (state.lost && !win.isDestroyed()) {
+              await win.loadURL(site.loginUrl, { userAgent: UA }).catch(() => {});
+              return;
+            }
+            if (!state.form && !state.bar) {
+              await win.webContents.executeJavaScript(bannerScript(site.formUrl || site.loginUrl, site.label)).catch(() => {});
+            } else if (state.form && state.bar) {
+              // 로그인 화면으로 돌아왔으면 막대는 치운다(폼을 가리지 않게).
+              await win.webContents.executeJavaScript(
+                "(()=>{const e=document.getElementById('__piggy_login_bar__');if(e){e.remove();document.body&&(document.body.style.paddingTop='');}})()",
+              ).catch(() => {});
+            }
+          } catch (_) { /* 페이지 이동 중이면 실패할 수 있다 — 다음 차례에 다시 본다 */ }
         }, POLL_MS);
       });
 

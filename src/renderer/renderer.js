@@ -33,6 +33,7 @@ const els = {
   queueCount: $('#queueCount'),
   emptyState: $('#emptyState'),
   clearDone: $('#clearDoneBtn'),
+  stopAll: $('#stopAllBtn'),
   theme: $('#themeBtn'),
   folder: $('#folderBtn'),
   folderLabel: $('#folderLabel'),
@@ -156,24 +157,33 @@ function bindExtras() {
       const on = !!st[row.dataset.site];
       setRow(row, on ? '✅ 로그인됨' : '아직 안 함', on ? 'on' : null);
     }
-    // 하나라도 해뒀으면 '다 됐다'는 신호를 보여준다.
-    const any = Object.values(st).some(Boolean);
-    threadsDoneMsg?.classList.toggle('hidden', !any);
-    updateSiteHint(any);
+    // ⚠️ '하나라도 됐으면 완료' 로 쓰면 안 된다. 인스타만 해둔 사람에게 "빠짐없이 받아집니다"
+    //    라고 말해놓고 정작 쓰레드는 사진이 빠진 채 받아졌다. 어느 사이트가 됐는지 그대로 말한다.
+    const okNames = Object.keys(st).filter((k) => st[k]).map((k) => SITE_LABEL[k]);
+    if (threadsDoneMsg) {
+      threadsDoneMsg.classList.toggle('hidden', !okNames.length);
+      threadsDoneMsg.innerHTML = `✅ <b>${okNames.join(' · ')} 로그인됨</b> — 이 사이트는 사진·영상이 빠짐없이 받아집니다.`;
+    }
+    updateSiteHint(st);
   };
 
   // 상단 안내문 — 로그인 전에는 눈에 띄게, 해두면 조용하게.
   //  (로그인 없이 받으면 쓰레드가 글을 가려서 사진이 일부만 내려온다)
-  const updateSiteHint = (any) => {
+  const updateSiteHint = (st) => {
     const hint = $('#siteHint');
     if (!hint) return;
-    hint.classList.toggle('ok', !!any);
-    hint.innerHTML = any
-      ? '✅ <b>로그인 완료</b> — 사진이 빠짐없이 받아집니다'
-      : '← <b>쓰레드·인스타·샤오홍슈</b>는 <b>먼저 로그인</b>하세요 (안 하면 일부만 받아져요)';
+    const okNames = Object.keys(st).filter((k) => st[k]).map((k) => SITE_LABEL[k]);
+    // 사진 누락이 실제로 터지는 곳은 쓰레드다 → 쓰레드가 안 돼 있으면 완료라고 말하지 않는다.
+    const ok = !!st.threads;
+    hint.classList.toggle('ok', ok);
+    hint.innerHTML = ok
+      ? `✅ <b>${okNames.join(' · ')} 로그인됨</b> — 사진이 빠짐없이 받아집니다`
+      : (okNames.length
+        ? `← <b>쓰레드는 아직입니다</b> (${okNames.join('·')}만 로그인됨) — 쓰레드 줄에서 로그인하세요`
+        : '← <b>쓰레드·인스타·샤오홍슈</b>는 <b>먼저 로그인</b>하세요 (안 하면 일부만 받아져요)');
   };
-  // 쓰레드·인스타는 한 세션을 같이 쓴다 → 한쪽을 지우면 다른 쪽도 풀린다. 미리 말해준다.
-  const SHARED = { threads: '인스타그램', instagram: '쓰레드' };
+  // 쓰레드·인스타는 세션이 분리돼 있다 → 한쪽을 지워도 다른 쪽은 그대로다.
+  const SHARED = {};
 
   for (const row of siteRows) {
     row.querySelector('.site-login')?.addEventListener('click', async () => {
@@ -284,7 +294,13 @@ async function init() {
   state.mode = state.settings.lastMode || 'video';
   // ⚡ 복사하면 바로 받기 — 기본 켜짐(껐던 사람만 꺼진 상태로 복원)
   if (els.autoDl) {
-    els.autoDl.checked = state.settings.autoDownloadOnCopy !== false;
+    // 예전 버전에서 기본값이 켜짐이라 저장돼 버린 사람들이 있다. 한 번은 꺼준다.
+    if (state.settings.autoDownloadMigrated !== true) {
+      state.settings.autoDownloadOnCopy = false;
+      state.settings.autoDownloadMigrated = true;
+      window.piggy.setSettings(state.settings);
+    }
+    els.autoDl.checked = state.settings.autoDownloadOnCopy === true;
     els.autoDl.addEventListener('change', persistPrefs);
   }
   // 📁 저장 위치 묻기 — 기본 꺼짐(다운로드 폴더 고정이 기본 설계)
@@ -314,7 +330,7 @@ function subscribeBridge() {
     if (url === els.url.value.trim() && state.pendingInfo) return;
     state.lastAutoUrl = url;                    // 같은 링크로 두 번 받지 않게
     els.url.value = url;
-    const auto = state.settings?.autoDownloadOnCopy !== false;
+    const auto = state.settings?.autoDownloadOnCopy === true;
     setStatus(auto ? '🔗 링크 복사 감지 — 바로 다운로드' : '🔗 복사한 링크 감지 — 불러오는 중');
     await fetchInfo();
     if (auto && state.pendingInfo) addCurrentToQueue();
@@ -338,7 +354,7 @@ function bindEvents() {
     els.url.value = t;
     state.lastAutoUrl = t;
     await fetchInfo();
-    if (state.settings?.autoDownloadOnCopy !== false && state.pendingInfo) addCurrentToQueue();
+    if (state.settings?.autoDownloadOnCopy === true && state.pendingInfo) addCurrentToQueue();
   });
   // 👀 자막만 보기 — 영상은 안 받고 음성만 전사해 텍스트로 보여준다.
   //   예전엔 크롬 확장에서만 열 수 있던 기능이라 확장을 빼면서 앱으로 옮겼다.
@@ -352,6 +368,12 @@ function bindEvents() {
   }
   els.add.addEventListener('click', addCurrentToQueue);
   els.clearDone.addEventListener('click', clearDone);
+  // 재생목록이 수십 개씩 쌓이면 ✕ 를 하나씩 누르는 건 멈추는 방법이 못 된다.
+  els.stopAll?.addEventListener('click', async () => {
+    if (!confirm('받는 중인 것과 대기 중인 것을 모두 중단할까요? 이미 받아진 파일은 그대로 남습니다.')) return;
+    await window.piggy.cancelAllDownloads();
+    setStatus('전체 중단했습니다');
+  });
   els.theme.addEventListener('click', toggleTheme);
   els.folder.addEventListener('click', () => window.piggy.openPath(state.downloadsDir));
 
@@ -368,7 +390,7 @@ function bindEvents() {
     els.url.value = text;
     state.lastAutoUrl = text;
     await fetchInfo();
-    if (state.settings?.autoDownloadOnCopy !== false && state.pendingInfo) addCurrentToQueue();
+    if (state.settings?.autoDownloadOnCopy === true && state.pendingInfo) addCurrentToQueue();
   });
 }
 
@@ -418,9 +440,10 @@ function updateFolderLabel() {
 async function tryAutoPasteFromClipboard() {
   const t = await window.piggy.readClipboard();
   if (t && /^https?:\/\/\S+$/.test(t) && /(youtu|tiktok|instagram|threads\.|vimeo|facebook|twitter|x\.com|naver|kakao)/i.test(t)) {
-    els.url.value = t;
+    // ⚠️ 주소칸에 미리 박아두지 않는다. 어제 복사해 둔 링크가 켤 때마다 들어가 있으면
+    //    지우고 쓰는 게 일이 된다. 있다는 사실만 알리고, 넣을지는 사용자가 정한다.
     state.lastAutoUrl = t; // 이 링크는 '방금 복사'가 아니므로 자동 다운로드 대상에서 제외
-    setStatus('클립보드에 링크가 있습니다 — 📋 또는 [불러오기]를 누르세요');
+    setStatus('클립보드에 링크가 있습니다 — [붙여넣기] 를 누르세요');
   }
 }
 
@@ -543,6 +566,11 @@ function refreshEmptyState() {
   const n = state.items.size;
   els.queueCount.textContent = String(n);
   els.emptyState.classList.toggle('hidden', n > 0);
+  // 아직 끝나지 않은 게 하나라도 있으면 [전체 중단] 을 보여준다.
+  // 재생목록처럼 수십 개가 쌓였을 때 빠져나올 유일한 길이다.
+  const running = [...state.items.values()]
+    .some((it) => it.status !== 'done' && it.status !== 'error' && it.status !== 'canceled');
+  els.stopAll?.classList.toggle('hidden', !running);
 }
 
 /* ============ 진행률 수신 ============ */
@@ -631,6 +659,7 @@ function setItemState(id, status) {
   it.el.classList.remove('done', 'error');
   if (status === 'done') it.el.classList.add('done');
   if (status === 'error' || status === 'canceled') it.el.classList.add('error');
+  refreshEmptyState();   // 남은 작업이 없어지면 [전체 중단] 도 같이 사라져야 한다
 }
 
 function setStatus(text) { els.status.textContent = text; }

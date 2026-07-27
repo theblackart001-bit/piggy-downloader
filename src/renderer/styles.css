@@ -431,3 +431,11 @@ body[data-theme='dark'] .seg-item.active { background: var(--blue); color: #fff;
   .hint-inline { color: #fbbf24; background: #2a2010; border-color: #7c5a15; }
   .hint-inline.ok { color: #4ade80; background: #0f2418; border-color: #206b3d; }
 }
+
+/* ⏹ 전체 중단 — 재생목록이 계속 받아질 때 빠져나올 유일한 길이라 눈에 띄어야 한다 */
+.stop-all { border: 1px solid rgba(214,69,69,.5); background: rgba(214,69,69,.08);
+  color: #c53434; font-weight: 800; font-size: 13px; padding: 7px 14px;
+  border-radius: 9px; cursor: pointer; transition: all var(--dur) var(--ease); }
+.stop-all:hover { background: #c53434; color: #fff; border-color: #c53434; }
+.stop-all.hidden { display: none; }
+.queue-head-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
