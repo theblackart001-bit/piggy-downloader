@@ -362,6 +362,14 @@ body[data-theme='dark'] .seg-item.active { background: var(--blue); color: #fff;
 .site-row .site-login { flex: none; height: 38px; padding: 0 18px; font-size: 13.5px; border-radius: 10px; }
 .site-row.done .site-login { background: none; color: var(--blue-deep);
   border: 2px solid rgba(31,155,240,.4); box-shadow: none; font-weight: 600; }
+/* 로그아웃 — 로그인해둔 줄에서만 보인다. 계정을 잘못 넣었을 때 빠져나갈 길이 있어야 한다.
+   실수로 누르기 쉬운 자리라 눈에 덜 띄게 두되, 없으면 안 된다. */
+.site-row .site-logout { flex: none; height: 38px; padding: 0 12px; font-size: 12.5px;
+  border-radius: 10px; border: 1px solid rgba(128,160,190,.4); background: none;
+  color: var(--text-faint); font-weight: 600; cursor: pointer; transition: all var(--dur) var(--ease); }
+.site-row .site-logout:hover { border-color: rgba(214,69,69,.55); color: #c53434;
+  background: rgba(214,69,69,.07); }
+.site-row .site-logout.hidden { display: none; }
 
 /* 접어둔 고급 영역 — 필요할 때만 펼쳐 본다 */
 .pg-fold { border: 1px solid rgba(128,160,190,.28); border-radius: 12px; margin: 12px 0;

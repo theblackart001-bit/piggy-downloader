@@ -8,6 +8,11 @@
  */
 const { app, BrowserWindow, session } = require('electron');
 
+// ⚠️ 개발 실행은 userData 가 'Electron' 으로 잡혀 **설치된 앱과 다른 세션**을 본다.
+//    실제 앱의 로그인 상태를 보려면 이름을 실제 제품명으로 맞춰야 한다.
+app.setName('Piggy Downloader');
+app.setPath('userData', require('path').join(app.getPath('appData'), 'Piggy Downloader'));
+
 const URL_ARG = process.argv.slice(2).find((a) => /^https?:\/\//.test(a));
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const PARTITION = 'persist:piggy-threads';

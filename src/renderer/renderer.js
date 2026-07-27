@@ -140,11 +140,14 @@ function bindExtras() {
   const setRow = (row, text, kind) => {
     const chip = row.querySelector('.site-state');
     const btn = row.querySelector('.site-login');
+    const out = row.querySelector('.site-logout');
     chip.textContent = text;
     chip.classList.toggle('on', kind === 'on');
     chip.classList.toggle('wait', kind === 'wait');
     row.classList.toggle('done', kind === 'on');
     if (btn) btn.textContent = kind === 'on' ? '다시 로그인' : '로그인';
+    // 로그아웃은 로그인해둔 줄에만 — 안 해둔 줄에 있으면 무슨 버튼인지 헷갈린다.
+    if (out) out.classList.toggle('hidden', kind !== 'on');
   };
   const showThreadsState = async () => {
     if (!siteRows.length) return;
@@ -169,15 +172,29 @@ function bindExtras() {
       ? '✅ <b>로그인 완료</b> — 사진이 빠짐없이 받아집니다'
       : '← <b>쓰레드·인스타·샤오홍슈</b>는 <b>먼저 로그인</b>하세요 (안 하면 일부만 받아져요)';
   };
+  // 쓰레드·인스타는 한 세션을 같이 쓴다 → 한쪽을 지우면 다른 쪽도 풀린다. 미리 말해준다.
+  const SHARED = { threads: '인스타그램', instagram: '쓰레드' };
+
   for (const row of siteRows) {
     row.querySelector('.site-login')?.addEventListener('click', async () => {
       const key = row.dataset.site;
-      setRow(row, '로그인 창에서 진행 중…', 'wait');
+      const relogin = row.classList.contains('done');
+      setRow(row, relogin ? '기존 로그인을 지우고 여는 중…' : '로그인 창에서 진행 중…', 'wait');
       const r = await window.piggy.siteLogin(key);
       await showThreadsState();
       setStatus(r?.loggedIn
         ? `${SITE_LABEL[key]} 로그인 완료 — 이제 빠짐없이 받아집니다`
-        : `${SITE_LABEL[key]} 로그인이 확인되지 않았습니다. 다시 시도해 주세요`);
+        : `${SITE_LABEL[key]} 로그인이 확인되지 않았습니다. 창에서 로그인을 끝까지 마쳐주세요`);
+    });
+
+    row.querySelector('.site-logout')?.addEventListener('click', async () => {
+      const key = row.dataset.site;
+      const also = SHARED[key] ? `\n\n${SHARED[key]}도 같은 계정이라 함께 로그아웃됩니다.` : '';
+      if (!confirm(`${SITE_LABEL[key]} 로그인을 지울까요?${also}`)) return;
+      setRow(row, '로그아웃 중…', 'wait');
+      await window.piggy.siteLogout(key);
+      await showThreadsState();
+      setStatus(`${SITE_LABEL[key]} 로그아웃했습니다`);
     });
   }
 
