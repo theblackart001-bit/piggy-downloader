@@ -8,6 +8,8 @@ const state = {
   items: new Map(), // id -> { el, info, status }
   seq: 0,
   lastAutoUrl: '', // 복사 감지로 이미 받은 링크(같은 걸 반복해서 받지 않게)
+  fetchSeq: 0, // 조회 요청 번호
+  fetchToken: null, // 지금 화면이 기다리는 조회. 취소하거나 새로 부르면 바뀐다.
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -28,7 +30,10 @@ const els = {
   previewDuration: $('#previewDuration'),
   previewSite: $('#previewSite'),
   add: $('#addBtn'),
+  previewClose: $('#previewCloseBtn'),
   fetchStatus: $('#fetchStatus'),
+  fetchStatusText: $('#fetchStatusText'),
+  fetchCancel: $('#fetchCancelBtn'),
   queue: $('#queue'),
   queueCount: $('#queueCount'),
   emptyState: $('#emptyState'),
@@ -367,6 +372,14 @@ function bindEvents() {
     });
   }
   els.add.addEventListener('click', addCurrentToQueue);
+  els.fetchCancel?.addEventListener('click', cancelFetch);
+  // 미리보기 취소 — 잘못 불러왔거나 마음이 바뀌었을 때 되돌린다.
+  els.previewClose?.addEventListener('click', () => {
+    state.pendingInfo = null;
+    els.preview.classList.add('hidden');
+    els.url.value = '';
+    setStatus('취소했습니다');
+  });
   els.clearDone.addEventListener('click', clearDone);
   // 재생목록이 수십 개씩 쌓이면 ✕ 를 하나씩 누르는 건 멈추는 방법이 못 된다.
   els.stopAll?.addEventListener('click', async () => {
@@ -452,13 +465,20 @@ async function fetchInfo() {
   if (!url) return;
   if (!/^https?:\/\//.test(url)) { showFetchStatus('error', '올바른 URL 이 아닙니다.'); return; }
 
+  // 요청마다 번호를 붙인다. 취소했거나 그 사이 다른 링크를 불렀으면
+  // 늦게 도착한 결과가 지금 화면을 덮어쓰지 못하게 막는다.
+  const token = `info_${++state.fetchSeq}`;
+  state.fetchToken = token;
   els.fetch.disabled = true;
   els.preview.classList.add('hidden');
-  showFetchStatus('loading', '정보를 불러오는 중...');
+  showFetchStatus('loading', '정보를 불러오는 중... (쇼츠·긴 영상은 시간이 걸립니다)');
   setStatus('정보 조회 중...');
 
-  const res = await window.piggy.getInfo(url);
+  const res = await window.piggy.getInfo(url, token);
+  if (state.fetchToken !== token) return; // 취소됐거나 더 새로운 요청이 있다
+  state.fetchToken = null;
   els.fetch.disabled = false;
+  els.fetchCancel?.classList.add('hidden');
 
   if (!res.ok) {
     showFetchStatus('error', `불러오기 실패: ${res.error}`);
@@ -483,8 +503,21 @@ function renderPreview(info) {
 
 function showFetchStatus(kind, msg) {
   els.fetchStatus.className = `fetch-status ${kind}`;
-  els.fetchStatus.textContent = msg;
+  els.fetchStatusText.textContent = msg;
+  // 조회가 길어질 때 빠져나올 길을 준다. 기다리는 것 말고 할 수 있는 게 없으면 답답하다.
+  els.fetchCancel?.classList.toggle('hidden', kind !== 'loading');
   els.fetchStatus.classList.remove('hidden');
+}
+
+// 불러오는 중 취소 — 화면만 닫으면 yt-dlp 는 계속 돌아간다. 프로세스까지 끊는다.
+function cancelFetch() {
+  const token = state.fetchToken;
+  state.fetchToken = null;
+  if (token) window.piggy.cancelInfo(token);
+  els.fetch.disabled = false;
+  els.fetchStatus.classList.add('hidden');
+  els.fetchCancel?.classList.add('hidden');
+  setStatus('불러오기를 중단했습니다');
 }
 
 /* ============ 큐 ============ */

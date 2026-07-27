@@ -41,6 +41,55 @@ function sectionArgs(job) {
 }
 
 /**
+ * 유튜브 주소를 표준 형태(watch?v=ID)로 바꾼다.
+ *
+ * 쇼츠 링크는 `youtube.com/shorts/ID?si=...&feature=share` 처럼 공유 파라미터가 잔뜩 붙어 온다.
+ * 그대로 넘기면 yt-dlp 가 리다이렉트를 한 번 더 타고, 파라미터에 따라 추출이 어긋나는 경우가 있다.
+ * → 영상 ID 만 남겨 곧장 watch 주소로 물어본다(쇼츠·youtu.be·embed 모두 같은 영상이다).
+ *
+ * ⚠️ 재생목록(/playlist?list=) · 채널(/@handle/shorts) 은 건드리지 않는다 — 형태가 다르면 원본 그대로.
+ */
+const YT_HOST_RE = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/i;
+const YT_ID_RE = /^[A-Za-z0-9_-]{8,}$/;
+
+/**
+ * 프로세스를 자식까지 통째로 끝낸다.
+ * yt-dlp 는 서명 해독에 deno 를 따로 띄운다 → 부모만 죽이면 손자가 남아
+ * 파이프를 붙들고 있고, CPU 도 계속 먹는다. 윈도우는 taskkill /T 로 트리째 정리한다.
+ */
+function killTree(child) {
+  if (!child || child.killed) return;
+  try {
+    if (process.platform === 'win32' && child.pid) {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
+    }
+    child.kill('SIGKILL');
+  } catch (_) { /* 이미 끝났으면 무시 */ }
+}
+
+function safeHost(url) {
+  try { return new URL(String(url)).hostname; } catch (_) { return ''; }
+}
+
+function canonicalYoutubeUrl(url) {
+  try {
+    const u = new URL(String(url));
+    if (!YT_HOST_RE.test(u.hostname)) return url;
+    let id = null;
+    if (/youtu\.be$/i.test(u.hostname)) {
+      id = u.pathname.split('/').filter(Boolean)[0] || null;
+    } else {
+      const m = u.pathname.match(/^\/(?:shorts|live|embed|v)\/([^/?#]+)/);
+      if (m) id = m[1];
+      else if (u.pathname === '/watch') id = u.searchParams.get('v');
+    }
+    return id && YT_ID_RE.test(id) ? `https://www.youtube.com/watch?v=${id}` : url;
+  } catch (_) {
+    return url;
+  }
+}
+
+/**
  * yt-dlp 래퍼: 메타데이터 조회 + 다운로드 + 진행률/취소 관리.
  * 모든 활성 다운로드 프로세스를 추적해 취소를 지원한다.
  */
@@ -48,16 +97,27 @@ class YtDlpEngine {
   constructor() {
     /** @type {Map<string, import('child_process').ChildProcess>} */
     this.active = new Map();
+    /** 정보 조회 중인 프로세스 — '불러오는 중' 에서 취소할 수 있게 따로 추적한다. */
+    this.infoProcs = new Map();
+    this.infoCanceled = new Set();
   }
 
   /** 공통 spawn — JSON/텍스트 stdout 을 모아서 반환 */
-  _run(args, { onLine } = {}) {
+  _run(args, { onLine, token } = {}) {
     const { ytDlp, ffmpegDir } = getPaths();
     return new Promise((resolve, reject) => {
+      // 프로세스를 띄우기 직전에 취소됐을 수도 있다 → 띄우지 않는다.
+      if (token && this.infoCanceled.has(token)) {
+        reject(Object.assign(new Error('취소됨'), { canceled: true }));
+        return;
+      }
       const child = spawn(ytDlp, [...YTDLP_BASE_ARGS, ...args], {
         windowsHide: true,
         env: envWithBin(),
       });
+      // 취소를 누른 즉시 끝내려면 reject 를 쥐고 있어야 한다 —
+      // 프로세스를 죽여도 손자(deno)가 파이프를 붙들고 있어 close 가 3초쯤 늦게 온다.
+      if (token) this.infoProcs.set(token, { child, reject });
       let stdout = '';
       let stderr = '';
       let buf = '';
@@ -77,13 +137,32 @@ class YtDlpEngine {
       child.stderr.on('data', (d) => {
         stderr += d.toString();
       });
-      child.on('error', (err) => reject(err));
+      child.on('error', (err) => {
+        if (token) this.infoProcs.delete(token);
+        reject(err);
+      });
       child.on('close', (code) => {
+        if (token) this.infoProcs.delete(token);
         if (buf.trim() && onLine) onLine(buf.trim());
         if (code === 0) resolve({ stdout, stderr });
+        else if (token && this.infoCanceled.has(token)) reject(Object.assign(new Error('취소됨'), { canceled: true }));
         else reject(new Error(stderr || `yt-dlp exited with code ${code}`));
       });
     });
+  }
+
+  /** '불러오는 중' 취소 — 돌고 있는 조회 프로세스를 끊는다. */
+  cancelInfo(token) {
+    if (!token) return false;
+    this.infoCanceled.add(token);
+    const entry = this.infoProcs.get(token);
+    if (entry) {
+      this.infoProcs.delete(token);
+      killTree(entry.child);
+      // 프로세스가 실제로 정리되는 걸 기다리지 않는다. 취소는 누른 순간 끝나야 한다.
+      entry.reject(Object.assign(new Error('취소됨'), { canceled: true }));
+    }
+    return true;
   }
 
   /**
@@ -101,15 +180,39 @@ class YtDlpEngine {
     if (!hasCookies && resolvers.shouldResolve(url)) {
       return resolvers.getInfoLike(url);
     }
-    const args = [
+    // 쇼츠·youtu.be 공유 링크는 표준 watch 주소로 바꿔서 물어본다(리다이렉트 한 번을 아낀다).
+    const target = canonicalYoutubeUrl(url);
+    const token = opts.token || null;
+    const baseArgs = (extra = []) => [
       '-J',
       '--no-warnings',
       '--no-playlist', // 미리보기는 단일 항목만; 재생목록은 다운로드 시 처리
+      // 응답이 없는 서버에 무한정 매달리지 않게 — 예전엔 '불러오는 중' 에서 하염없이 멈춰 있었다.
+      '--socket-timeout', '15',
+      '--retries', '3',
+      ...extra,
       ...cookieArgs(opts),
-      url,
+      target,
     ];
-    const { stdout } = await this._run(args);
-    return JSON.parse(stdout);
+    try {
+      const { stdout } = await this._run(baseArgs(), { token });
+      return JSON.parse(stdout);
+    } catch (err) {
+      if (err.canceled || (token && this.infoCanceled.has(token))) throw err;
+      // 유튜브는 특정 플레이어 클라이언트에서만 막히는 일이 잦다(쇼츠에서 자주 났다).
+      // 기본 클라이언트가 실패하면 다른 클라이언트로 딱 한 번 더 물어본다.
+      if (!YT_HOST_RE.test(safeHost(target))) throw err;
+      const { stdout } = await this._run(
+        baseArgs(['--extractor-args', 'youtube:player_client=tv,web_safari,android']),
+        { token },
+      );
+      return JSON.parse(stdout);
+    } finally {
+      if (token) {
+        this.infoCanceled.delete(token);
+        this.infoProcs.delete(token);
+      }
+    }
   }
 
   /**
@@ -371,7 +474,12 @@ class YtDlpEngine {
       }
     }
 
-    args.push(job.url);
+    // ★ 재생목록에 묶인 영상이라도 '내가 고른 그 한 개'만 받는다.
+    //   유튜브에서 재생목록 안의 영상을 복사하면 주소에 &list=... 가 따라온다.
+    //   --no-playlist 로도 대부분 막히지만, 믹스(RD·UL)처럼 자동 생성된 목록은
+    //   주소 자체가 목록을 가리켜 그 뒤로 줄줄이 받아지는 경우가 있다.
+    //   → 목록 전체를 원한 게 아니면 주소에서 아예 list 를 떼고 영상 ID 만 남긴다.
+    args.push(job.playlist || direct ? job.url : canonicalYoutubeUrl(job.url));
     return args;
   }
 

@@ -84,9 +84,13 @@
         </div>
       </div>
       <button id="addBtn" class="primary-btn add-btn">⬇ 다운로드</button>
+      <button id="previewCloseBtn" class="preview-close" title="이 영상 취소">✕</button>
     </section>
 
-    <div id="fetchStatus" class="fetch-status hidden"></div>
+    <div id="fetchStatus" class="fetch-status hidden">
+      <span id="fetchStatusText"></span>
+      <button id="fetchCancelBtn" class="fetch-cancel hidden" title="불러오기를 중단합니다">✕ 취소</button>
+    </div>
 
     <!-- 다운로드 큐 -->
     <section class="queue-section">

@@ -229,14 +229,18 @@ async function cookiesForUrl(url) {
   try { return await sitelogin.cookiesForUrl(url); } catch (_) { return null; }
 }
 
-ipcMain.handle('info:get', async (_e, url) => {
+ipcMain.handle('info:get', async (_e, url, token) => {
   try {
-    const info = await engine.getInfo(url, { cookies: await cookiesForUrl(url) });
+    const info = await engine.getInfo(url, { cookies: await cookiesForUrl(url), token });
     return { ok: true, info: pickInfo(info) };
   } catch (err) {
+    if (err && err.canceled) return { ok: false, canceled: true, error: '취소됨' };
     return { ok: false, error: String(err.message || err) };
   }
 });
+
+// '불러오는 중' 취소 — 오래 걸리는 조회에 갇히지 않게 한다.
+ipcMain.handle('info:cancel', (_e, token) => ({ ok: engine.cancelInfo(token) }));
 
 ipcMain.handle('download:start', async (e, job) => {
   const settings = loadSettings();
