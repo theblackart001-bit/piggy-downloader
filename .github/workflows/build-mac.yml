@@ -4,7 +4,12 @@ name: Build macOS
 # 개발 PC 가 Windows 라 여기(GitHub 의 실제 맥 머신)에서 빌드해 릴리즈에 붙인다.
 # 공개 저장소라 macOS 러너가 무료다.
 
+# 릴리즈가 만들어지면 자동으로 돈다.
+# (수동 실행만 걸어뒀더니 v1.6.0 이후 맥 파일이 통째로 빠진 채 v1.8.5 까지 나갔다.
+#  매뉴얼은 "릴리즈에서 arm64.dmg 를 받으세요" 라고 안내하는데 파일이 없어서 문의가 들어왔다.)
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -19,7 +24,12 @@ jobs:
     permissions:
       contents: write
 
+    # release 로 자동 실행되면 그 릴리즈의 태그를, 수동 실행이면 입력한 태그를 쓴다.
+    env:
+      TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+
     steps:
+      # release 이벤트면 checkout 이 그 태그를 그대로 받아온다(빌드 버전 = 릴리즈 버전).
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -84,8 +94,8 @@ jobs:
         run: |
           shopt -s nullglob
           FILES=(dist/*.dmg dist/*.zip dist/latest-mac.yml)
-          echo "업로드: ${FILES[*]}"
-          gh release upload "${{ inputs.tag }}" "${FILES[@]}" --clobber --repo "${{ github.repository }}"
+          echo "업로드 대상($TAG): ${FILES[*]}"
+          gh release upload "$TAG" "${FILES[@]}" --clobber --repo "${{ github.repository }}"
 
       # 릴리즈 첨부가 실패하더라도 산출물은 남겨 손으로 받을 수 있게 한다.
       - name: 빌드 결과 보관(다운로드용)
