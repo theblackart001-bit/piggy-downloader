@@ -22,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { BrowserWindow, session } = require('electron');
+const { safeName } = require('./filename');
 
 const THREADS_RE = /(^|\/\/)(www\.)?threads\.(net|com)\//i;
 
@@ -518,8 +519,9 @@ function makeUniqueDir(parent, name) {
  */
 async function downloadAll(meta, outputDir, { onProgress = null, baseName = '' } = {}) {
   const say = (text) => { if (onProgress) onProgress({ type: 'stage', stage: 'downloading', text }); };
-  const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
-  const base = safe(baseName || meta.title) || `Threads ${meta.code}`;
+  // 이름 규칙은 filename.js 한 곳에만 둔다. 여기서 폴더까지 만들기 때문에
+  // 끝의 마침표를 안 지우면 탐색기로 못 여는 폴더가 생긴다(사연은 filename.js 주석에).
+  const base = safeName(baseName || meta.title, 100) || `Threads ${meta.code}`;
 
   // 글 JSON 을 읽었으면 **글에 실린 순서 그대로**(1번이 영상이면 01.mp4) 받는다.
   const extOf = (u, fallback) => (u.split('?')[0].match(/\.(mp4|jpe?g|png|webp)$/i) || [, fallback])[1].toLowerCase();
