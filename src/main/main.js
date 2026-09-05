@@ -232,7 +232,13 @@ async function cookiesForUrl(url) {
 ipcMain.handle('info:get', async (_e, url, token) => {
   try {
     const info = await engine.getInfo(url, { cookies: await cookiesForUrl(url), token });
-    return { ok: true, info: pickInfo(info) };
+    const picked = pickInfo(info);
+    // 🖼 http·xhscdn 썸네일은 렌더러가 못 그린다 → 메인에서 받아 data URL 로 심는다(샤오홍슈 대응).
+    if (picked.thumbnail && (picked.thumbnail.startsWith('http://') || /xhscdn\.com/i.test(picked.thumbnail))) {
+      const dataUrl = await fetchImageAsDataUrl(picked.thumbnail);
+      if (dataUrl) picked.thumbnail = dataUrl;
+    }
+    return { ok: true, info: picked };
   } catch (err) {
     if (err && err.canceled) return { ok: false, canceled: true, error: '취소됨' };
     return { ok: false, error: String(err.message || err) };
@@ -378,6 +384,29 @@ ipcMain.handle('preview:close', (e) => {
   if (win && !win.isDestroyed()) win.close();
   return true;
 });
+
+/* 🖼 http 썸네일(샤오홍슈 xhscdn 등)을 data URL 로 바꾼다.
+ *   Electron 렌더러는 http:// 이미지를 mixed-content 로 막아 안 보인다. xhscdn 은 https 로
+ *   승격하면 404 라(시간서명 경로) 승격도 못 한다 → 메인(Node)에서 받아 data URL 로 심는다.
+ *   ⚠️ https(유튜브 등)는 그냥 로드되므로 건드리지 않는다 — http·xhscdn 만 대상. */
+function fetchImageAsDataUrl(u, { timeoutMs = 6000 } = {}) {
+  return new Promise((resolve) => {
+    let lib;
+    try { lib = u.startsWith('https:') ? require('https') : require('http'); } catch (_) { return resolve(null); }
+    let req;
+    try {
+      req = lib.get(u, { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.xiaohongshu.com/' } }, (res) => {
+        if (res.statusCode !== 200) { res.resume(); return resolve(null); }
+        const ct = res.headers['content-type'] || 'image/jpeg';
+        const chunks = []; let size = 0;
+        res.on('data', (c) => { size += c.length; if (size > 3000000) { req.destroy(); return resolve(null); } chunks.push(c); });
+        res.on('end', () => resolve('data:' + ct + ';base64,' + Buffer.concat(chunks).toString('base64')));
+      });
+    } catch (_) { return resolve(null); }
+    req.on('error', () => resolve(null));
+    req.setTimeout(timeoutMs, () => { try { req.destroy(); } catch (_) {} resolve(null); });
+  });
+}
 
 /* yt-dlp 의 방대한 info 에서 UI 에 필요한 필드만 추린다 */
 function pickInfo(info) {
