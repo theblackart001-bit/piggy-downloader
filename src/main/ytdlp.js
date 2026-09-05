@@ -19,6 +19,24 @@ const { safeName } = require('./filename');
  * ⚠️ 쿠키는 '로그인한 나'와 같은 권한이다. 본계정 말고 **부계정 쿠키**를 권한다.
  *    쿠키 값은 이 앱이 어디로도 보내지 않는다(로컬에서 yt-dlp 에만 전달).
  */
+/**
+ * 🚀 **받는 속도.** 조각을 여러 개 **동시에** 받는다.
+ *
+ * 유튜브·인스타 영상은 대부분 수백 개 «조각(fragment)» 으로 쪼개져 온다.
+ * 기본은 한 번에 하나씩이라, 조각 하나마다 왕복 지연이 그대로 쌓인다.
+ * 동시에 받으면 그 지연이 겹쳐져 **체감 2~4배** 빨라진다.
+ *
+ * ⚠️ **aria2c 를 안 쓴다.** 경쟁사(SB)처럼 외부 다운로더를 붙이면 실행파일을
+ *   하나 더 배포해야 하고(윈도우·맥 각각), 자동 업데이트 대상도 하나 늘어난다.
+ *   yt-dlp 에 이미 들어 있는 기능으로 같은 효과를 낸다 — **배포할 게 늘지 않는다.**
+ *
+ * ⚠️ 숫자를 더 올리지 마라. 8 을 넘기면 유튜브가 429(너무 잦음)로 끊는 일이 생기고,
+ *   그러면 «빨라지기는커녕 실패» 가 된다. 4 는 안전하면서 효과가 확실한 지점이다.
+ */
+function speedArgs() {
+  return ['--concurrent-fragments', '4'];
+}
+
 function cookieArgs(job) {
   const c = job && job.cookies;
   if (!c || !c.mode || c.mode === 'none') return [];
@@ -94,6 +112,20 @@ function canonicalYoutubeUrl(url) {
  * yt-dlp 래퍼: 메타데이터 조회 + 다운로드 + 진행률/취소 관리.
  * 모든 활성 다운로드 프로세스를 추적해 취소를 지원한다.
  */
+function canonicalRednoteUrl(url) {
+  try {
+    const u = new URL(String(url));
+    // 🟥 rednote.com = 샤오홍슈(小红书) 국제판 도메인. yt-dlp 는 xiaohongshu.com 추출기만 있어
+    //   rednote.com 은 'Unsupported URL' 로 떨어진다. 같은 item ID 를 쓰므로 호스트만 바꿔 주면
+    //   그대로 받아진다(xsec_token 등 쿼리는 반드시 유지 — 없으면 샤오홍슈가 거절).
+    if (/(^|\.)rednote\.com$/i.test(u.hostname)) {
+      u.hostname = 'www.xiaohongshu.com';
+      return u.toString();
+    }
+    return url;
+  } catch (_) { return url; }
+}
+
 class YtDlpEngine {
   constructor() {
     /** @type {Map<string, import('child_process').ChildProcess>} */
@@ -171,6 +203,7 @@ class YtDlpEngine {
    * @returns {Promise<object>} yt-dlp -J 결과(JSON)
    */
   async getInfo(url, opts = {}) {
+    url = canonicalRednoteUrl(url);   // rednote.com → xiaohongshu.com
     // 🧵 Threads 는 yt-dlp 에 추출기 자체가 없다 → 전용 리졸버로 처리.
     if (threads.shouldHandle(url)) {
       return threads.getInfoLike(url, { cookiesFile: opts.cookies?.file || null });
@@ -230,6 +263,7 @@ class YtDlpEngine {
    * @param {function} onProgress      진행률 콜백
    */
   async download(job, onProgress) {
+    if (job && job.url) job.url = canonicalRednoteUrl(job.url);   // rednote.com → xiaohongshu.com
     // 🧵 Threads: 숨긴 창으로 글을 열어 실제 mp4/이미지 주소를 잡아낸 뒤 **전부** 받는다.
     //   유튜브처럼 주소만 주면 되도록, 한 글에 영상·사진이 여럿이어도 모두 저장한다.
     if (threads.shouldHandle(job.url)) {
@@ -330,6 +364,7 @@ class YtDlpEngine {
    * @returns {Promise<string>} 받은 오디오 파일 절대경로
    */
   async downloadAudioOnly(url, outDir, onProgress) {
+    url = canonicalRednoteUrl(url);   // rednote.com → xiaohongshu.com
     // 인스타 등: 직접 미디어 URL로 먼저 해석
     if (resolvers.shouldResolve(url)) {
       if (onProgress) onProgress({ type: 'stage', text: '🔗 인스타그램 링크 분석 중...' });
@@ -432,6 +467,7 @@ class YtDlpEngine {
       '--print', 'after_move:FILE|%(filepath)s',
       ...cookieArgs(job),
       ...sectionArgs(job),
+      ...speedArgs(),
     ];
 
     if (job.playlist && !direct) {

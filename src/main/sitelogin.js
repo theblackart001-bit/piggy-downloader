@@ -85,7 +85,7 @@ const SITES = {
     loginUrl: 'https://www.xiaohongshu.com/explore',
     checkUrls: ['https://www.xiaohongshu.com'],
     cookieNames: ['web_session'],
-    urlRe: /(^|\/\/)(www\.)?xiaohongshu\.com\/|xhslink\.com\//i,
+    urlRe: /(^|\/\/)(www\.)?(xiaohongshu|rednote)\.com\/|xhslink\.com\//i,
     win: { width: 1120, height: 840 },
   },
 };
