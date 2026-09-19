@@ -233,6 +233,22 @@ class YtDlpEngine {
       return JSON.parse(stdout);
     } catch (err) {
       if (err.canceled || (token && this.infoCanceled.has(token))) throw err;
+      /* 🔁 **막혔을 때 우회** (사장님 지시 2026-09-19 — SB 의 «받는 경로» 를 옮긴 것).
+       *   페북·틱톡·X 는 yt-dlp 가 «대체로» 되지만 지역·로그인 벽에 걸리는 일이 있다.
+       *   그때 빈손으로 돌려주는 대신 snapsave 로 **한 번 더** 묻는다.
+       * ⚠️ 인스타는 여기 오지 않는다 — 위에서 이미 우회로 빠진다(늘 막히는 곳이라).
+       * ⚠️ 쿠키를 등록한 사람은 건드리지 않는다. 그쪽이 더 정확하고, 우회는 formats 를 잃는다. */
+      if (!hasCookies && resolvers.canResolve(url)) {
+        try {
+          const info = await resolvers.getInfoLike(url);
+          console.log(`[ytdlp] 🔁 ${resolvers.siteOf(url)?.label} — yt-dlp 가 막혀 우회로 메타를 받았습니다`);
+          return info;
+        } catch (e2) {
+          /* 우회도 실패하면 **원래 오류**를 던진다 — 고칠 단서는 그쪽에 있다.
+             다만 우회를 시도했다는 사실은 남긴다(안 남기면 "왜 우회를 안 했지"를 영원히 다시 묻는다). */
+          console.warn(`[ytdlp] 🔁 우회도 실패 — ${e2.message}`);
+        }
+      }
       // 유튜브는 특정 플레이어 클라이언트에서만 막히는 일이 잦다(쇼츠에서 자주 났다).
       // 기본 클라이언트가 실패하면 다른 클라이언트로 딱 한 번 더 물어본다.
       if (!YT_HOST_RE.test(safeHost(target))) throw err;
@@ -302,10 +318,47 @@ class YtDlpEngine {
     //  ⚠️ 쿠키를 등록했다면 리졸버를 쓰지 않는다 — 쿠키가 있으면 yt-dlp 가
     //    비공개·로그인 전용 게시물까지 정식으로 처리하므로 그쪽이 정확하다.
     const hasCookies = !!(job.cookies && job.cookies.mode && job.cookies.mode !== 'none');
+    /** 리졸버가 준 메타를 job 에 싣는다 — **바로 우회할 때와 폴백할 때가 같은 모양**이어야 한다.
+     *  (두 군데서 각자 조립하면 한쪽만 라벨을 빠뜨려 파일명이 「Media 7123」 이 된다) */
+    const 우회job = (meta) => ({
+      ...job,
+      url: meta.directUrl,
+      _direct: true,
+      _resolvedId: meta.shortcode,
+      _resolvedTitle: meta.caption || job.title,
+      _resolvedLabel: meta.label,
+    });
+    // ① 늘 막히는 곳(인스타) — 시도할 것도 없이 바로 우회.
     if (!hasCookies && resolvers.shouldResolve(job.url)) {
-      if (onProgress) onProgress({ type: 'stage', stage: 'resolving', text: '🔗 인스타그램 링크 분석 중...' });
-      const meta = await resolvers.resolve(job.url);
-      job = { ...job, url: meta.directUrl, _direct: true, _igShortcode: meta.shortcode, _igTitle: meta.caption || job.title };
+      const site = resolvers.siteOf(job.url);
+      if (onProgress) onProgress({ type: 'stage', stage: 'resolving', text: `🔗 ${site ? site.label : ''} 링크 분석 중...` });
+      return this._spawnDownload(우회job(await resolvers.resolve(job.url)), onProgress);
+    }
+    /* ② 🔁 **막혔을 때 우회**(폴백) — 페북·틱톡·X (사장님 지시 2026-09-19).
+     *   yt-dlp 를 **먼저** 쓴다: 되는 동안은 화질·길이·업로더가 제대로 오고,
+     *   우회로 가면 formats=[] 라 그 정보를 잃는다. 막혔을 때만 갈아탄다.
+     *
+     * 🚨 **취소는 여기 안 온다** — `_spawnDownload` 는 사람이 멈추면 `reject` 가 아니라
+     *   `resolve({ ok:false, canceled:true })` 로 «정상» 반환한다. 그래서 catch 에는
+     *   진짜 실패만 들어온다. (이걸 모르고 반환값만 보고 폴백을 걸면 **사람이 멈춘 다운로드를
+     *   우회로 다시 받는다** — 무엇보다 나쁜 고장이다.) */
+    if (!hasCookies && resolvers.canResolve(job.url)) {
+      try {
+        return await this._spawnDownload(job, onProgress);
+      } catch (err) {
+        const site = resolvers.siteOf(job.url);
+        if (onProgress) onProgress({ type: 'stage', stage: 'resolving', text: `🔁 ${site.label} — 다른 경로로 다시 받아 봅니다...` });
+        let meta;
+        try {
+          meta = await resolvers.resolve(job.url);
+        } catch (e2) {
+          // 우회도 실패 → **원래 오류**를 보여준다. 사람이 고칠 단서는 그쪽에 있다.
+          console.warn(`[ytdlp] 🔁 ${site.label} 우회도 실패 — ${e2.message}`);
+          throw err;
+        }
+        console.log(`[ytdlp] 🔁 ${site.label} — yt-dlp 가 막혀 우회로 받습니다`);
+        return this._spawnDownload(우회job(meta), onProgress);
+      }
     }
     return this._spawnDownload(job, onProgress);
   }
@@ -365,9 +418,14 @@ class YtDlpEngine {
    */
   async downloadAudioOnly(url, outDir, onProgress) {
     url = canonicalRednoteUrl(url);   // rednote.com → xiaohongshu.com
-    // 인스타 등: 직접 미디어 URL로 먼저 해석
+    // 늘 막히는 곳(인스타): 직접 미디어 URL로 먼저 해석
+    /* ⚠️ 여기는 **폴백을 넣지 않았다** — 자막 미리보기는 실패해도 손해가 작고(영상은 따로 받는다),
+         이 함수는 아래에서 직접 spawn 하는 다른 구조라 같은 폴백을 붙이면 위험이 이득보다 크다.
+         페북·틱톡·X 의 미리보기가 막히면 영상을 받은 뒤 자막을 뽑으면 된다.
+         (안 적어 두면 「왜 여기만 우회를 안 하지」를 나중에 다시 묻게 된다) */
     if (resolvers.shouldResolve(url)) {
-      if (onProgress) onProgress({ type: 'stage', text: '🔗 인스타그램 링크 분석 중...' });
+      const site = resolvers.siteOf(url);
+      if (onProgress) onProgress({ type: 'stage', text: `🔗 ${site ? site.label : ''} 링크 분석 중...` });
       const meta = await resolvers.resolve(url);
       url = meta.directUrl;
     }
@@ -443,14 +501,19 @@ class YtDlpEngine {
     //     · 뒤에 [dQw4w9WgXcQ] 같은 영상 ID 가 붙었다
     //   → 제목만 쓰고, 길이는 150바이트로 잘라 윈도우 경로 길이 제한을 피한다.
     //     (파일명에 못 쓰는 문자 \ / : * ? " < > | 는 yt-dlp 가 알아서 바꿔준다)
-    // 쓰레드/인스타는 직접 미디어 URL 이라 yt-dlp 가 제목을 모른다 → 우리가 잡은 제목을 쓴다.
+    // 쓰레드/우회(인스타·페북·틱톡·X)는 직접 미디어 URL 이라 yt-dlp 가 제목을 모른다
+    // → 우리가 잡은 제목을 쓴다.
     // 이름 규칙(끝 마침표 제거 등)은 filename.js 한 곳에만 둔다 — 사연은 거기 주석에.
+    /* 🚨 **이름에 «Instagram» 을 박아 두지 않는다** (2026-09-19).
+         우회가 인스타 하나였을 때는 `Instagram ${코드}` 가 맞았다. 넷으로 넓히는 순간
+         **틱톡을 받아도 파일명이 「Instagram 7123…」** 이 된다 — 오류는 안 나고 이름만 거짓말한다.
+         그래서 필드 이름도 `_ig*` → `_resolved*` 로 바꾸고, 라벨을 리졸버가 들고 오게 했다. */
     const safe = (s) => safeName(s, 120);
     const nameBase = direct && job._threadsCode
       ? (safe(job._threadsTitle) || `Threads ${job._threadsCode}`)
-      : direct && job._igShortcode
+      : direct && job._resolvedId
         // 쓰레드와 같은 규칙 — 글 내용을 파일명으로. 캡션이 없을 때만 코드로 떨어진다.
-        ? (safe(job._igTitle) || `Instagram ${job._igShortcode}`)
+        ? (safe(job._resolvedTitle) || `${job._resolvedLabel || 'Media'} ${job._resolvedId}`)
         : '%(title).150B';
     const outTemplate = path.join(job.outputDir, `${nameBase}.%(ext)s`);
     const args = [
