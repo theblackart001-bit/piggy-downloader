@@ -88,6 +88,20 @@ const SITES = {
     urlRe: /(^|\/\/)(www\.)?(xiaohongshu|rednote)\.com\/|xhslink\.com\//i,
     win: { width: 1120, height: 840 },
   },
+  // 🎬 도우인(抖音) — SB Downloader 벤치마킹(2026-09-23, 저자 동의).
+  //   로그인 전용 주소가 따로 없다 — 첫 화면(피드)을 열면 우측 위에서 로그인할 수 있다.
+  //   ⚠️ 게스트에게도 ttwid·msToken 쿠키가 바로 심긴다(SB 실측과 동일) — 그래서
+  //      '쿠키가 하나라도 있으면 로그인' 으로 판정하면 안 되고, 로그인해야만 생기는
+  //      sessionid 계열만 로그인 표식으로 쓴다(아래 cookieNames).
+  douyin: {
+    label: '도우인',
+    partition: 'persist:piggy-douyin',
+    loginUrl: 'https://www.douyin.com/',
+    checkUrls: ['https://www.douyin.com'],
+    cookieNames: ['sessionid', 'sessionid_ss'],
+    urlRe: /(^|\/\/)(www\.|v\.)?douyin\.com\/|iesdouyin\.com\//i,
+    win: { width: 480, height: 780 },
+  },
 };
 
 const getSite = (key) => SITES[key] || null;
@@ -96,7 +110,7 @@ const getSession = (key) => session.fromPartition(getSite(key).partition);
 /** 이 주소가 어느 사이트인가 (쿠키를 붙일지 판단용) */
 function siteOfUrl(url) {
   const u = String(url || '');
-  for (const key of ['threads', 'instagram', 'xhs']) {
+  for (const key of ['threads', 'instagram', 'xhs', 'douyin']) {
     if (SITES[key].urlRe.test(u)) return key;
   }
   return null;
@@ -277,7 +291,7 @@ function cookieFilePath(partition) {
 }
 
 /** 이 앱이 관리하는 도메인만 내보낸다(다른 사이트 쿠키는 애초에 없지만, 확실히 해 둔다). */
-const EXPORT_DOMAIN_RE = /(threads|instagram|facebook|cdninstagram|xiaohongshu|xhscdn)/i;
+const EXPORT_DOMAIN_RE = /(threads|instagram|facebook|cdninstagram|xiaohongshu|xhscdn|douyin)/i;
 
 /**
  * 세션 쿠키 → netscape cookies.txt.

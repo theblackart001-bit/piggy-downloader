@@ -140,7 +140,7 @@ function bindExtras() {
   };
   // 🔑 사이트별 로그인 — 확장·쿠키파일 없이 앱 안에서 바로 로그인시킨다
   //    (크롬 쿠키를 긁어오는 방법은 크롬 127+ 의 App-Bound Encryption 때문에 불가능하다)
-  const SITE_LABEL = { threads: '🧵 쓰레드', instagram: '📸 인스타그램', xhs: '📕 샤오홍슈' };
+  const SITE_LABEL = { threads: '🧵 쓰레드', instagram: '📸 인스타그램', xhs: '📕 샤오홍슈', douyin: '🎬 도우인' };
   const siteRows = [...document.querySelectorAll('.site-row')];
   const threadsDoneMsg = $('#threadsDoneMsg');
   const setRow = (row, text, kind) => {

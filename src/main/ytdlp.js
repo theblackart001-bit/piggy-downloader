@@ -6,6 +6,7 @@ const fs = require('fs');
 const { getPaths, envWithBin, YTDLP_BASE_ARGS } = require('./binaries');
 const resolvers = require('./resolvers');
 const threads = require('./threads');
+const douyin = require('./douyin');
 const { safeName } = require('./filename');
 
 /**
@@ -38,11 +39,29 @@ function speedArgs() {
 }
 
 function cookieArgs(job) {
+  // 🎬 도우인 등 브라우저 추출 경로가 그 자리에서 얻은 세션 쿠키가 있으면 그쪽을 우선한다 —
+  //   msToken 처럼 자바스크립트가 실시간으로 심는 쿠키는 사용자가 등록해 둔 쿠키파일보다 더 최신이다.
+  const directCookieFile = job && job._directHeaders && job._directHeaders.cookieFile;
+  if (directCookieFile && fs.existsSync(directCookieFile)) return ['--cookies', directCookieFile];
   const c = job && job.cookies;
   if (!c || !c.mode || c.mode === 'none') return [];
   if (c.mode === 'file' && c.file && fs.existsSync(c.file)) return ['--cookies', c.file];
   if (c.mode === 'browser' && c.browser) return ['--cookies-from-browser', c.browser];
   return [];
+}
+
+/**
+ * 브라우저 추출(도우인 등)이 실제로 그 영상을 요청할 때 쓴 Referer/Origin/User-Agent.
+ * 없으면 CDN 이 핫링크 방지(403)로 막는다 — 반드시 그 브라우저 세션과 같은 값을 써야 한다.
+ */
+function directHeaderArgs(job) {
+  const h = job && job._directHeaders;
+  if (!h) return [];
+  const args = [];
+  if (h.referer) args.push('--referer', h.referer);
+  if (h.userAgent) args.push('--user-agent', h.userAgent);
+  if (h.origin) args.push('--add-header', `Origin:${h.origin}`);
+  return args;
 }
 
 /**
@@ -208,6 +227,11 @@ class YtDlpEngine {
     if (threads.shouldHandle(url)) {
       return threads.getInfoLike(url, { cookiesFile: opts.cookies?.file || null });
     }
+    // 🎬 도우인: yt-dlp 가 전 세계적으로 막혀 있다(a_bogus 서명, yt-dlp#9667) → 시도할 것도 없이
+    //    바로 숨긴 브라우저로 추출한다(SB Downloader 방식 이식, douyin.js 상단 주석 참고).
+    if (douyin.shouldHandle(url)) {
+      return douyin.getInfoLike(url);
+    }
     // 인스타 등 쿠키가 막는 사이트는 외부 리졸버로 메타 조회(로그인 불필요)
     // 단, 사용자가 쿠키를 등록했다면 리졸버보다 쿠키가 더 정확하므로 yt-dlp 로 간다.
     const hasCookies = !!(opts.cookies && opts.cookies.mode && opts.cookies.mode !== 'none');
@@ -313,6 +337,42 @@ class YtDlpEngine {
             + `[🔑 로그인]에서 쓰레드 로그인 후 다시 받아주세요`
           : null,
       };
+    }
+    // 🎬 도우인: 숨긴 브라우저로 찾은 실제 CDN 주소를 yt-dlp 에 넘겨 받는다.
+    //   (영상은 yt-dlp 로, 노트(이미지 글)는 직접 저장 — SB Downloader 방식 이식)
+    if (douyin.shouldHandle(job.url)) {
+      const meta = await douyin.resolveWithRetry(job.url, { onProgress });
+      if (meta.kind === 'photo') {
+        if (onProgress) onProgress({ type: 'stage', stage: 'downloading', text: '🎬 사진 받는 중...' });
+        return douyin.downloadPhotos(meta, job.outputDir);
+      }
+      const j = {
+        ...job,
+        url: meta.directUrl,
+        _direct: true,
+        _resolvedId: meta.id,
+        _resolvedTitle: meta.title,
+        _resolvedLabel: '도우인',
+        // 브라우저가 실제로 그 영상을 요청할 때 쓴 Referer/Origin/UA/세션 쿠키를 그대로 재현한다.
+        // 없으면 도우인 CDN 이 핫링크 방지(403)로 막는다.
+        _directHeaders: { referer: meta.referer, origin: meta.origin, userAgent: meta.userAgent, cookieFile: meta.cookieFile },
+      };
+      try {
+        return await this._spawnDownload(j, onProgress);
+      } catch (err) {
+        // 주소는 찾았는데 받는 단계에서 막히면(403 등) = 그 세션이 로그인 상태가 아니었을 가능성.
+        // 창을 띄워 사람이 로그인/캡차를 풀게 하고 딱 한 번 더 시도한다(SB Downloader 방식).
+        if (!/403|forbidden/i.test(err.message || '')) throw err;
+        if (onProgress) onProgress({ type: 'stage', stage: 'resolving', text: '🎬 도우인이 막았습니다 — 창을 열어 로그인 후 다시 시도합니다' });
+        const meta2 = await douyin.resolve(job.url, { visible: true, onProgress });
+        if (meta2.kind === 'photo') return douyin.downloadPhotos(meta2, job.outputDir);
+        return this._spawnDownload({
+          ...j,
+          url: meta2.directUrl,
+          _resolvedTitle: meta2.title,
+          _directHeaders: { referer: meta2.referer, origin: meta2.origin, userAgent: meta2.userAgent, cookieFile: meta2.cookieFile },
+        }, onProgress);
+      }
     }
     // 인스타 등: 로그인 없이 직접 미디어 URL로 해석 후 그 URL을 다운로드.
     //  ⚠️ 쿠키를 등록했다면 리졸버를 쓰지 않는다 — 쿠키가 있으면 yt-dlp 가
@@ -529,6 +589,7 @@ class YtDlpEngine {
       // 최종 산출 파일 경로를 후처리 후 출력(자막 생성용)
       '--print', 'after_move:FILE|%(filepath)s',
       ...cookieArgs(job),
+      ...directHeaderArgs(job),
       ...sectionArgs(job),
       ...speedArgs(),
     ];
@@ -631,6 +692,7 @@ class YtDlpEngine {
     if (s.includes('private video') || s.includes('login')) return '비공개/로그인이 필요한 영상입니다.';
     if (s.includes('video unavailable')) return '영상을 사용할 수 없습니다(삭제/지역 제한).';
     if (s.includes('ffmpeg')) return 'ffmpeg 오류 — 바이너리를 확인하세요.';
+    if (s.includes('403') && s.includes('douyin')) return '도우인이 요청을 거부했습니다(403) — 🔑 로그인 후 다시 시도해보세요.';
     const firstErr = (stderr || '').split('\n').filter((l) => l.toUpperCase().includes('ERROR')).pop();
     return firstErr || `다운로드 실패 (code ${code})`;
   }
