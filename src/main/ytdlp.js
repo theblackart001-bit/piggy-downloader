@@ -261,8 +261,11 @@ class YtDlpEngine {
        *   페북·틱톡·X 는 yt-dlp 가 «대체로» 되지만 지역·로그인 벽에 걸리는 일이 있다.
        *   그때 빈손으로 돌려주는 대신 snapsave 로 **한 번 더** 묻는다.
        * ⚠️ 인스타는 여기 오지 않는다 — 위에서 이미 우회로 빠진다(늘 막히는 곳이라).
-       * ⚠️ 쿠키를 등록한 사람은 건드리지 않는다. 그쪽이 더 정확하고, 우회는 formats 를 잃는다. */
-      if (!hasCookies && resolvers.canResolve(url)) {
+       * ⚠️ 쿠키를 등록한 사람도 **yt-dlp 가 실패했을 때는** 우회한다 (2026-10-08 수강생 제보).
+       *   쿠키가 있어도 인스타가 응답 모양을 바꾸면 yt-dlp 가 «JSON 파싱 실패» 로 죽는다 —
+       *   그때 «쿠키가 있으니 우회 안 함» 이면 로그인해 둔 사람만 영영 못 받는다.
+       *   되는 동안은 쿠키 쪽(yt-dlp)이 먼저라 formats 를 잃지 않는다. */
+      if (resolvers.canResolve(url)) {
         try {
           const info = await resolvers.getInfoLike(url);
           console.log(`[ytdlp] 🔁 ${resolvers.siteOf(url)?.label} — yt-dlp 가 막혀 우회로 메타를 받았습니다`);
@@ -397,12 +400,14 @@ class YtDlpEngine {
     /* ② 🔁 **막혔을 때 우회**(폴백) — 페북·틱톡·X (사장님 지시 2026-09-19).
      *   yt-dlp 를 **먼저** 쓴다: 되는 동안은 화질·길이·업로더가 제대로 오고,
      *   우회로 가면 formats=[] 라 그 정보를 잃는다. 막혔을 때만 갈아탄다.
+     *   쿠키를 등록한 인스타도 여기로 온다 — 쿠키로 먼저 받고, 막히면 우회(2026-10-08 수강생 제보:
+     *   쿠키가 있으면 우회를 아예 안 해서 «[Instagram] JSON 파싱 실패» 로 끝났다).
      *
      * 🚨 **취소는 여기 안 온다** — `_spawnDownload` 는 사람이 멈추면 `reject` 가 아니라
      *   `resolve({ ok:false, canceled:true })` 로 «정상» 반환한다. 그래서 catch 에는
      *   진짜 실패만 들어온다. (이걸 모르고 반환값만 보고 폴백을 걸면 **사람이 멈춘 다운로드를
      *   우회로 다시 받는다** — 무엇보다 나쁜 고장이다.) */
-    if (!hasCookies && resolvers.canResolve(job.url)) {
+    if (resolvers.canResolve(job.url)) {
       try {
         return await this._spawnDownload(job, onProgress);
       } catch (err) {
