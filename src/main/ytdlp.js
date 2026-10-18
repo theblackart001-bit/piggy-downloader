@@ -704,3 +704,4 @@ class YtDlpEngine {
 }
 
 module.exports = new YtDlpEngine();
+module.exports.canonicalRednoteUrl = canonicalRednoteUrl; // scripts/test-clipboard-link.js 검사용

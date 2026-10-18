@@ -9,11 +9,32 @@ const { clipboard } = require('electron');
  *  2) 로컬 HTTP 서버: 크롬 확장의 플로팅 버튼이 호출 -> 다운로드 추가
  */
 
-const VIDEO_HOST = /(youtu\.?be|youtube\.com|tiktok\.com|instagram\.com|threads\.(net|com)|vimeo\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|naver\.com|kakao|twitch\.tv|bilibili\.com|dailymotion\.com)/i;
+const VIDEO_HOST = /(youtu\.?be|youtube\.com|tiktok\.com|instagram\.com|threads\.(net|com)|vimeo\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|naver\.com|kakao|twitch\.tv|bilibili\.com|dailymotion\.com|xiaohongshu\.com|rednote\.com|xhslink\.com|douyin\.com|iesdouyin\.com)/i;
 const PORT = 53472; // 크롬 확장과 약속된 고정 포트
 
 function isVideoUrl(text) {
   return typeof text === 'string' && /^https?:\/\/\S+$/.test(text.trim()) && VIDEO_HOST.test(text);
+}
+
+// 링크는 공백·따옴표·괄호·한중일/전각 문자(，。！【】 등)에서 끊는다.
+//   샤오홍슈·도우인 앱 '공유' 문구는 링크 바로 뒤에 '，复制本条信息…' 처럼 전각 쉼표가 붙어 온다.
+const LINK_RE = /https?:\/\/[^\s"'<>()\[\]{}　-〿㐀-鿿가-힯＀-￯]+/gi;
+const MAX_SCAN_LEN = 2000; // 긴 문서를 통째로 복사했을 때까지 링크를 주워 가지는 않는다
+
+/** 복사한 글에서 첫 영상 링크를 뽑는다(없으면 null).
+ *  글 전체가 링크면 그대로, 앱 공유 문구('… http://xhslink.com/a/AbC，复制本条信息…')면 그 안의 링크만.
+ *  🟥 쿼리(xsec_token 등)는 절대 건드리지 않는다 — 샤오홍슈는 토큰 없는 주소를 거절한다. */
+function extractVideoUrl(text) {
+  if (typeof text !== 'string') return null;
+  const t = text.trim();
+  if (!t) return null;
+  if (isVideoUrl(t)) return t;
+  if (t.length > MAX_SCAN_LEN) return null;
+  for (const m of t.match(LINK_RE) || []) {
+    const url = m.replace(/[.,;:!?]+$/, ''); // 문장 끝 마침표 등(= 는 토큰 끝일 수 있어 남긴다)
+    if (VIDEO_HOST.test(url)) return url;
+  }
+  return null;
 }
 
 function startClipboardWatch(getWindow, intervalMs = 900) {
@@ -23,9 +44,10 @@ function startClipboardWatch(getWindow, intervalMs = 900) {
     try { cur = clipboard.readText(); } catch (_) { return; }
     if (cur && cur !== last) {
       last = cur;
-      if (isVideoUrl(cur)) {
+      const url = extractVideoUrl(cur);
+      if (url) {
         const win = getWindow();
-        if (win && !win.isDestroyed()) win.webContents.send('clipboard:url', cur.trim());
+        if (win && !win.isDestroyed()) win.webContents.send('clipboard:url', url);
       }
     }
   }, intervalMs);
@@ -83,4 +105,4 @@ function startServer(getWindow, handlers = {}) {
   return server;
 }
 
-module.exports = { startClipboardWatch, startServer, isVideoUrl, PORT };
+module.exports = { startClipboardWatch, startServer, isVideoUrl, extractVideoUrl, PORT };
