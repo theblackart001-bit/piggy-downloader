@@ -56,4 +56,20 @@ function safeName(raw, max = DEFAULT_MAX) {
   return RESERVED.has(stem) ? `_${cleaned}` : cleaned;
 }
 
-module.exports = { safeName };
+/**
+ * 인스타 «제목» 고르기 (사장님 지시 2026-10-19: "피기 다운로더 받을 때 영상 제목으로 다운로드 받게").
+ * 쿠키를 등록한 사람은 인스타도 yt-dlp 로 받는데, yt-dlp 가 주는 인스타 제목은 늘 «Video by 계정명» 이라
+ * 파일이 `Video by chae2home.mp4` 로 쌓였다(유튜브·틱톡은 이미 제목 그대로). 인스타의 «제목» 은 게시물
+ * 글(캡션)이다 — 첫 줄(비어 있지 않은 줄)을 쓴다. 캡션이 없으면 원래 제목을 그대로 돌려준다.
+ * @param {string} title        yt-dlp 가 준 제목
+ * @param {string} description  게시물 글(캡션)
+ * @returns {string}
+ */
+function captionTitle(title, description) {
+  const t = String(title || '').trim();
+  if (!/^(video|photo|post) by /i.test(t)) return t;
+  const first = String(description || '').split(/\r?\n/).map((l) => l.trim()).find(Boolean) || '';
+  return first ? first.slice(0, 100) : t;
+}
+
+module.exports = { safeName, captionTitle };

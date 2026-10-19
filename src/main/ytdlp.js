@@ -7,7 +7,7 @@ const { getPaths, envWithBin, YTDLP_BASE_ARGS } = require('./binaries');
 const resolvers = require('./resolvers');
 const threads = require('./threads');
 const douyin = require('./douyin');
-const { safeName } = require('./filename');
+const { safeName, captionTitle } = require('./filename');
 
 /**
  * 🔑 로그인이 필요한 콘텐츠용 쿠키 인자.
@@ -107,6 +107,14 @@ function killTree(child) {
 
 function safeHost(url) {
   try { return new URL(String(url)).hostname; } catch (_) { return ''; }
+}
+
+const IG_HOST_RE = /(^|\.)instagram\.com$/i;
+/** 인스타면 «Video by 계정명» 대신 캡션 첫 줄을 제목으로 — 미리보기·기록·파일명이 모두 이 제목을 본다. */
+function withCaptionTitle(info, url) {
+  if (!info || !IG_HOST_RE.test(safeHost(url))) return info;
+  const title = captionTitle(info.title, info.description);
+  return title === info.title ? info : { ...info, title };
 }
 
 function canonicalYoutubeUrl(url) {
@@ -254,7 +262,7 @@ class YtDlpEngine {
     ];
     try {
       const { stdout } = await this._run(baseArgs(), { token });
-      return JSON.parse(stdout);
+      return withCaptionTitle(JSON.parse(stdout), url);
     } catch (err) {
       if (err.canceled || (token && this.infoCanceled.has(token))) throw err;
       /* 🔁 **막혔을 때 우회** (사장님 지시 2026-09-19 — SB 의 «받는 경로» 를 옮긴 것).
@@ -283,7 +291,7 @@ class YtDlpEngine {
         baseArgs(['--extractor-args', 'youtube:player_client=tv,web_safari,android']),
         { token },
       );
-      return JSON.parse(stdout);
+      return withCaptionTitle(JSON.parse(stdout), url);
     } finally {
       if (token) {
         this.infoCanceled.delete(token);
@@ -579,7 +587,9 @@ class YtDlpEngine {
       : direct && job._resolvedId
         // 쓰레드와 같은 규칙 — 글 내용을 파일명으로. 캡션이 없을 때만 코드로 떨어진다.
         ? (safe(job._resolvedTitle) || `${job._resolvedLabel || 'Media'} ${job._resolvedId}`)
-        : '%(title).150B';
+        // 인스타(yt-dlp 경로)는 yt-dlp 제목이 «Video by 계정명» 이라, 미리보기에서 캡션으로 바꾼 job.title 을 쓴다.
+        : (IG_HOST_RE.test(safeHost(job.url)) && safe(captionTitle(job.title, job.description)))
+          || '%(title).150B';
     const outTemplate = path.join(job.outputDir, `${nameBase}.%(ext)s`);
     const args = [
       '--newline',
