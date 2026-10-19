@@ -68,8 +68,30 @@ function safeName(raw, max = DEFAULT_MAX) {
 function captionTitle(title, description) {
   const t = String(title || '').trim();
   if (!/^(video|photo|post) by /i.test(t)) return t;
-  const first = String(description || '').split(/\r?\n/).map((l) => l.trim()).find(Boolean) || '';
-  return first ? first.slice(0, 100) : t;
+  /* 첫 줄만 쓰면 같은 계정 게시물이 전부 같은 이름이 된다 — 실측(2026-10-20): 첫 줄이 «♥️댓글에 나도 남겨주세요😉»
+       같은 계정 공통 문구였다. 줄들을 이어 앞 80자를 쓴다(틱톡도 캡션 전체를 이름으로 쓴다). */
+  const joined = String(description || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join(' ');
+  return joined ? joined.slice(0, 80).trim() : t;
 }
 
-module.exports = { safeName, captionTitle };
+/** 인스타 파일명 — 캡션이 없어 아직 «Video by 계정명» 이면 게시물 코드(yt-dlp %(id)s)를 붙여
+ *  같은 계정 영상끼리 구분한다(사장님 지시 2026-10-20: "같은 채널에서 여러 개 받아도 구분할 수 있게"). */
+function 인스타이름(title) {
+  if (!title) return '%(title).120B %(id)s';
+  return /^(video|photo|post) by /i.test(title) ? `${title} %(id)s` : title;
+}
+
+const 받은확장자 = ['mp4', 'webm', 'mkv', 'mov', 'm4a', 'mp3', 'opus', 'jpg', 'png'];
+/** 같은 이름의 파일이 이미 있으면 « (2)» · « (3)» … 을 붙인다 — 이름이 겹치면 yt-dlp 는 «이미 받았다» 며
+ *  두 번째 영상을 조용히 건너뛴다. yt-dlp 틀(%(…)s)이 든 이름은 미리 알 수 없어 그대로 둔다(그건 %(id)s 로 이미 구분된다). */
+function 겹치지않게(dir, base) {
+  if (!dir || !base || base.includes('%(')) return base;
+  const fs = require('fs');
+  const path = require('path');
+  const 있나 = (b) => 받은확장자.some((e) => fs.existsSync(path.join(dir, `${b}.${e}`)));
+  if (!있나(base)) return base;
+  for (let i = 2; i < 1000; i++) if (!있나(`${base} (${i})`)) return `${base} (${i})`;
+  return `${base} (${Date.now()})`;
+}
+
+module.exports = { safeName, captionTitle, 인스타이름, 겹치지않게 };

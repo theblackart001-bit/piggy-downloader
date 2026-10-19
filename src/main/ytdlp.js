@@ -7,7 +7,7 @@ const { getPaths, envWithBin, YTDLP_BASE_ARGS } = require('./binaries');
 const resolvers = require('./resolvers');
 const threads = require('./threads');
 const douyin = require('./douyin');
-const { safeName, captionTitle } = require('./filename');
+const { safeName, captionTitle, 인스타이름, 겹치지않게 } = require('./filename');
 
 /**
  * 🔑 로그인이 필요한 콘텐츠용 쿠키 인자.
@@ -588,9 +588,12 @@ class YtDlpEngine {
         // 쓰레드와 같은 규칙 — 글 내용을 파일명으로. 캡션이 없을 때만 코드로 떨어진다.
         ? (safe(job._resolvedTitle) || `${job._resolvedLabel || 'Media'} ${job._resolvedId}`)
         // 인스타(yt-dlp 경로)는 yt-dlp 제목이 «Video by 계정명» 이라, 미리보기에서 캡션으로 바꾼 job.title 을 쓴다.
-        : (IG_HOST_RE.test(safeHost(job.url)) && safe(captionTitle(job.title, job.description)))
-          || '%(title).150B';
-    const outTemplate = path.join(job.outputDir, `${nameBase}.%(ext)s`);
+        : IG_HOST_RE.test(safeHost(job.url))
+          ? 인스타이름(safe(captionTitle(job.title, job.description)))
+          : '%(title).150B';
+    /* 🗂 같은 채널에서 여러 개를 받아도 하나씩 따로 남게 (사장님 지시 2026-10-20).
+         이름이 겹치면 yt-dlp 는 «이미 받았다» 며 **두 번째 영상을 조용히 건너뛴다** — 뒤에 (2)·(3) 을 붙인다. */
+    const outTemplate = path.join(job.outputDir, `${겹치지않게(job.outputDir, nameBase)}.%(ext)s`);
     const args = [
       '--newline',
       '--no-warnings',
