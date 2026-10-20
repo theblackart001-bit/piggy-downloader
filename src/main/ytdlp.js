@@ -109,6 +109,18 @@ function safeHost(url) {
   try { return new URL(String(url)).hostname; } catch (_) { return ''; }
 }
 
+/** 유튜브 «채널·재생목록» 주소인가 — 이것만 «영상 1개만» 제한을 건다.
+ *  샤오홍슈·인스타·틱톡·X 처럼 한 게시물에 영상이 여러 개일 수 있는 곳은 건드리지 않는다
+ *  (전부 받던 기존 동작 그대로 — 쇼핑쇼츠 스킬이 피기로 샤오홍슈를 받는다). */
+function isYoutubeListUrl(url) {
+  try {
+    const u = new URL(String(url));
+    if (!/(^|\.)youtube\.com$/i.test(u.hostname)) return false;
+    return /^\/(@[^/]+|channel\/|c\/|user\/|playlist)/i.test(u.pathname);
+  } catch (_) { return false; }
+}
+const ONE_ITEM = (url) => (isYoutubeListUrl(url) ? ['--playlist-items', '1'] : []);
+
 /** 채널·재생목록을 물어봤을 때 yt-dlp 는 목록(playlist)을 돌려준다 — 미리보기는 그 첫 영상으로 보여 준다. */
 function firstEntry(info) {
   if (info && info._type === 'playlist' && Array.isArray(info.entries) && info.entries[0]) return info.entries[0];
@@ -259,9 +271,9 @@ class YtDlpEngine {
       '-J',
       '--no-warnings',
       '--no-playlist', // 미리보기는 단일 항목만; 재생목록은 다운로드 시 처리
-      // 📺 채널·재생목록 주소(/@채널/videos 등)는 --no-playlist 가 안 먹어 목록 전체를 훑는다
+      // 📺 유튜브 채널·재생목록 주소(/@채널/videos 등)는 --no-playlist 가 안 먹어 목록 전체를 훑는다
       //   → 첫 번째(가장 최근) 영상 하나만 본다 (사장님 지시 2026-10-20 «채널 복사하면 영상 1개만»)
-      '--playlist-items', '1',
+      ...ONE_ITEM(target),
       // 응답이 없는 서버에 무한정 매달리지 않게 — 예전엔 '불러오는 중' 에서 하염없이 멈춰 있었다.
       '--socket-timeout', '15',
       '--retries', '3',
@@ -518,7 +530,7 @@ class YtDlpEngine {
       '--newline',
       '--no-warnings',
       '--no-playlist',
-      '--playlist-items', '1', // 채널 주소여도 영상 1개만
+      ...ONE_ITEM(url), // 유튜브 채널 주소여도 영상 1개만
       '--ffmpeg-location', ffmpegDir,
       '--restrict-filenames',
       '--no-mtime',
@@ -625,8 +637,8 @@ class YtDlpEngine {
     if (job.playlist && !direct) {
       args.push('--yes-playlist');
     } else {
-      // 채널·재생목록 주소를 복사해도 «영상 1개만» — --no-playlist 는 채널 주소엔 안 먹는다.
-      args.push('--no-playlist', '--playlist-items', '1');
+      // 유튜브 채널·재생목록 주소를 복사해도 «영상 1개만» — --no-playlist 는 채널 주소엔 안 먹는다.
+      args.push('--no-playlist', ...ONE_ITEM(job.url));
     }
 
     if (job.mode === 'audio') {
@@ -730,3 +742,4 @@ class YtDlpEngine {
 module.exports = new YtDlpEngine();
 module.exports.canonicalRednoteUrl = canonicalRednoteUrl; // scripts/test-clipboard-link.js 검사용
 module.exports.firstEntry = firstEntry; // scripts/test-channel-one.js 검사용
+module.exports.isYoutubeListUrl = isYoutubeListUrl;
