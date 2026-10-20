@@ -33,7 +33,8 @@ ok(인스타이름('다이소 꿀템') === '다이소 꿀템', '캡션 제목은
 }
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'ytdlp.js'), 'utf8');
-ok((src.match(/withCaptionTitle\(JSON\.parse\(stdout\), url\)/g) || []).length === 2, 'getInfo 의 두 반환(기본·유튜브 재시도) 모두 인스타 제목을 바꾼다');
+// (2026-10-20) 채널 주소 대응으로 firstEntry(…) 로 한 번 감쌌다 — 감싸도 «두 반환 모두 캡션 제목» 이라는 뜻은 같다
+ok((src.match(/withCaptionTitle\((?:firstEntry\()?JSON\.parse\(stdout\)\)?, url\)/g) || []).length === 2, 'getInfo 의 두 반환(기본·유튜브 재시도) 모두 인스타 제목을 바꾼다');
 ok(/인스타이름\(safe\(captionTitle\(job\.title/.test(src), '파일명(_buildArgs)도 인스타면 캡션 제목 → 없으면 코드');
 ok(/겹치지않게\(job\.outputDir, nameBase\)/.test(src), '모든 다운로드 파일명이 겹치지 않게 (2)·(3) 을 거친다');
 

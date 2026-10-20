@@ -109,6 +109,12 @@ function safeHost(url) {
   try { return new URL(String(url)).hostname; } catch (_) { return ''; }
 }
 
+/** 채널·재생목록을 물어봤을 때 yt-dlp 는 목록(playlist)을 돌려준다 — 미리보기는 그 첫 영상으로 보여 준다. */
+function firstEntry(info) {
+  if (info && info._type === 'playlist' && Array.isArray(info.entries) && info.entries[0]) return info.entries[0];
+  return info;
+}
+
 const IG_HOST_RE = /(^|\.)instagram\.com$/i;
 /** 인스타면 «Video by 계정명» 대신 캡션 첫 줄을 제목으로 — 미리보기·기록·파일명이 모두 이 제목을 본다. */
 function withCaptionTitle(info, url) {
@@ -253,6 +259,9 @@ class YtDlpEngine {
       '-J',
       '--no-warnings',
       '--no-playlist', // 미리보기는 단일 항목만; 재생목록은 다운로드 시 처리
+      // 📺 채널·재생목록 주소(/@채널/videos 등)는 --no-playlist 가 안 먹어 목록 전체를 훑는다
+      //   → 첫 번째(가장 최근) 영상 하나만 본다 (사장님 지시 2026-10-20 «채널 복사하면 영상 1개만»)
+      '--playlist-items', '1',
       // 응답이 없는 서버에 무한정 매달리지 않게 — 예전엔 '불러오는 중' 에서 하염없이 멈춰 있었다.
       '--socket-timeout', '15',
       '--retries', '3',
@@ -262,7 +271,7 @@ class YtDlpEngine {
     ];
     try {
       const { stdout } = await this._run(baseArgs(), { token });
-      return withCaptionTitle(JSON.parse(stdout), url);
+      return withCaptionTitle(firstEntry(JSON.parse(stdout)), url);
     } catch (err) {
       if (err.canceled || (token && this.infoCanceled.has(token))) throw err;
       /* 🔁 **막혔을 때 우회** (사장님 지시 2026-09-19 — SB 의 «받는 경로» 를 옮긴 것).
@@ -291,7 +300,7 @@ class YtDlpEngine {
         baseArgs(['--extractor-args', 'youtube:player_client=tv,web_safari,android']),
         { token },
       );
-      return withCaptionTitle(JSON.parse(stdout), url);
+      return withCaptionTitle(firstEntry(JSON.parse(stdout)), url);
     } finally {
       if (token) {
         this.infoCanceled.delete(token);
@@ -509,6 +518,7 @@ class YtDlpEngine {
       '--newline',
       '--no-warnings',
       '--no-playlist',
+      '--playlist-items', '1', // 채널 주소여도 영상 1개만
       '--ffmpeg-location', ffmpegDir,
       '--restrict-filenames',
       '--no-mtime',
@@ -615,7 +625,8 @@ class YtDlpEngine {
     if (job.playlist && !direct) {
       args.push('--yes-playlist');
     } else {
-      args.push('--no-playlist');
+      // 채널·재생목록 주소를 복사해도 «영상 1개만» — --no-playlist 는 채널 주소엔 안 먹는다.
+      args.push('--no-playlist', '--playlist-items', '1');
     }
 
     if (job.mode === 'audio') {
@@ -718,3 +729,4 @@ class YtDlpEngine {
 
 module.exports = new YtDlpEngine();
 module.exports.canonicalRednoteUrl = canonicalRednoteUrl; // scripts/test-clipboard-link.js 검사용
+module.exports.firstEntry = firstEntry; // scripts/test-channel-one.js 검사용
