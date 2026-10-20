@@ -119,12 +119,13 @@ function isYoutubeListUrl(url) {
     return /^\/(@[^/]+|channel\/|c\/|user\/|playlist)/i.test(u.pathname);
   } catch (_) { return false; }
 }
-const ONE_ITEM = (url) => (isYoutubeListUrl(url) ? ['--playlist-items', '1'] : []);
-
-/** 채널·재생목록을 물어봤을 때 yt-dlp 는 목록(playlist)을 돌려준다 — 미리보기는 그 첫 영상으로 보여 준다. */
-function firstEntry(info) {
-  if (info && info._type === 'playlist' && Array.isArray(info.entries) && info.entries[0]) return info.entries[0];
-  return info;
+/** 사장님 지시(2026-10-20): 유튜브 채널·재생목록 링크는 «아예 받지 않는다» — 개별 영상 링크만.
+ *  채널을 통째로 받으면 유튜브 요청이 폭증해 차단 위험이 크고, 원치 않는 영상이 수십 개 쌓인다. */
+const CHANNEL_URL_MESSAGE = '유튜브 채널(재생목록) 링크는 받지 않습니다. 받고 싶은 영상 하나를 열어서 그 영상의 링크를 복사해 주세요.';
+function channelUrlError() {
+  const err = new Error(CHANNEL_URL_MESSAGE);
+  err.code = 'CHANNEL_URL';
+  return err;
 }
 
 const IG_HOST_RE = /(^|\.)instagram\.com$/i;
@@ -248,6 +249,8 @@ class YtDlpEngine {
    * @returns {Promise<object>} yt-dlp -J 결과(JSON)
    */
   async getInfo(url, opts = {}) {
+    // 🚫 유튜브 채널·재생목록 링크는 조회조차 안 한다(유튜브 요청 0) — 화면에 이유를 띄운다.
+    if (isYoutubeListUrl(url)) throw channelUrlError();
     url = canonicalRednoteUrl(url);   // rednote.com → xiaohongshu.com
     // 🧵 Threads 는 yt-dlp 에 추출기 자체가 없다 → 전용 리졸버로 처리.
     if (threads.shouldHandle(url)) {
@@ -271,9 +274,6 @@ class YtDlpEngine {
       '-J',
       '--no-warnings',
       '--no-playlist', // 미리보기는 단일 항목만; 재생목록은 다운로드 시 처리
-      // 📺 유튜브 채널·재생목록 주소(/@채널/videos 등)는 --no-playlist 가 안 먹어 목록 전체를 훑는다
-      //   → 첫 번째(가장 최근) 영상 하나만 본다 (사장님 지시 2026-10-20 «채널 복사하면 영상 1개만»)
-      ...ONE_ITEM(target),
       // 응답이 없는 서버에 무한정 매달리지 않게 — 예전엔 '불러오는 중' 에서 하염없이 멈춰 있었다.
       '--socket-timeout', '15',
       '--retries', '3',
@@ -283,7 +283,7 @@ class YtDlpEngine {
     ];
     try {
       const { stdout } = await this._run(baseArgs(), { token });
-      return withCaptionTitle(firstEntry(JSON.parse(stdout)), url);
+      return withCaptionTitle(JSON.parse(stdout), url);
     } catch (err) {
       if (err.canceled || (token && this.infoCanceled.has(token))) throw err;
       /* 🔁 **막혔을 때 우회** (사장님 지시 2026-09-19 — SB 의 «받는 경로» 를 옮긴 것).
@@ -312,7 +312,7 @@ class YtDlpEngine {
         baseArgs(['--extractor-args', 'youtube:player_client=tv,web_safari,android']),
         { token },
       );
-      return withCaptionTitle(firstEntry(JSON.parse(stdout)), url);
+      return withCaptionTitle(JSON.parse(stdout), url);
     } finally {
       if (token) {
         this.infoCanceled.delete(token);
@@ -335,6 +335,7 @@ class YtDlpEngine {
    * @param {function} onProgress      진행률 콜백
    */
   async download(job, onProgress) {
+    if (job && isYoutubeListUrl(job.url)) throw channelUrlError();   // 채널 링크는 받지 않는다
     if (job && job.url) job.url = canonicalRednoteUrl(job.url);   // rednote.com → xiaohongshu.com
     // 🧵 Threads: 숨긴 창으로 글을 열어 실제 mp4/이미지 주소를 잡아낸 뒤 **전부** 받는다.
     //   유튜브처럼 주소만 주면 되도록, 한 글에 영상·사진이 여럿이어도 모두 저장한다.
@@ -511,6 +512,7 @@ class YtDlpEngine {
    * @returns {Promise<string>} 받은 오디오 파일 절대경로
    */
   async downloadAudioOnly(url, outDir, onProgress) {
+    if (isYoutubeListUrl(url)) throw channelUrlError();   // 채널 링크는 받지 않는다
     url = canonicalRednoteUrl(url);   // rednote.com → xiaohongshu.com
     // 늘 막히는 곳(인스타): 직접 미디어 URL로 먼저 해석
     /* ⚠️ 여기는 **폴백을 넣지 않았다** — 자막 미리보기는 실패해도 손해가 작고(영상은 따로 받는다),
@@ -530,7 +532,6 @@ class YtDlpEngine {
       '--newline',
       '--no-warnings',
       '--no-playlist',
-      ...ONE_ITEM(url), // 유튜브 채널 주소여도 영상 1개만
       '--ffmpeg-location', ffmpegDir,
       '--restrict-filenames',
       '--no-mtime',
@@ -637,8 +638,7 @@ class YtDlpEngine {
     if (job.playlist && !direct) {
       args.push('--yes-playlist');
     } else {
-      // 유튜브 채널·재생목록 주소를 복사해도 «영상 1개만» — --no-playlist 는 채널 주소엔 안 먹는다.
-      args.push('--no-playlist', ...ONE_ITEM(job.url));
+      args.push('--no-playlist');
     }
 
     if (job.mode === 'audio') {
@@ -741,5 +741,5 @@ class YtDlpEngine {
 
 module.exports = new YtDlpEngine();
 module.exports.canonicalRednoteUrl = canonicalRednoteUrl; // scripts/test-clipboard-link.js 검사용
-module.exports.firstEntry = firstEntry; // scripts/test-channel-one.js 검사용
-module.exports.isYoutubeListUrl = isYoutubeListUrl;
+module.exports.isYoutubeListUrl = isYoutubeListUrl; // scripts/test-channel-one.js 검사용
+module.exports.CHANNEL_URL_MESSAGE = CHANNEL_URL_MESSAGE;

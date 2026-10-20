@@ -241,7 +241,7 @@ ipcMain.handle('info:get', async (_e, url, token) => {
     return { ok: true, info: picked };
   } catch (err) {
     if (err && err.canceled) return { ok: false, canceled: true, error: '취소됨' };
-    return { ok: false, error: String(err.message || err) };
+    return { ok: false, code: err && err.code, error: String(err.message || err) };
   }
 });
 

@@ -481,6 +481,12 @@ async function fetchInfo() {
   els.fetchCancel?.classList.add('hidden');
 
   if (!res.ok) {
+    // 🚫 유튜브 채널 링크: 실패가 아니라 «받지 않는 링크» — 이유와 할 일을 따로 크게 알려 준다.
+    if (res.code === 'CHANNEL_URL') {
+      showFetchStatus('error', `🚫 ${res.error}`);
+      setStatus('채널 링크는 받지 않습니다 — 영상 링크를 복사해 주세요');
+      return;
+    }
     showFetchStatus('error', `불러오기 실패: ${res.error}`);
     setStatus('실패');
     return;
